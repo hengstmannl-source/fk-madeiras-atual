@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -33,6 +34,27 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+
+  app.disable("x-powered-by");
+  app.use(
+    helmet({
+      contentSecurityPolicy:
+        process.env.NODE_ENV === "development"
+          ? false
+          : {
+              directives: {
+                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+                "img-src": ["'self'", "data:", "blob:", "https:"],
+                "frame-src": ["'self'", "blob:", "https:"],
+              },
+            },
+      strictTransportSecurity:
+        process.env.NODE_ENV === "production"
+          ? { maxAge: 31_536_000, includeSubDomains: false }
+          : false,
+    })
+  );
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
