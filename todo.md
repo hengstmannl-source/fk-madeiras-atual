@@ -1,0 +1,939 @@
+# FK Madeiras - Sistema de Orçamentos de Madeira
+
+- [x] Planeamento de arquitetura e modelagem do banco de dados
+- [x] Configurar projeto frontend com Vite + React + TypeScript + TailwindCSS + ShadCN/UI
+- [x] Implementar autenticação JWT e controlo de acesso
+- [x] Dashboard principal com resumo de orçamentos recentes, totais e indicadores (KPIs)
+- [x] Cadastro de tipos de madeira com nome, descrição e unidade de medida
+- [x] Cadastro de bitolas (dimensões: largura x espessura x comprimento) associadas a cada tipo de madeira
+- [x] Cadastro de clientes com nome, contacto, email e morada
+- [x] Módulo de criação de orçamentos: seleção de cliente, adição de itens (madeira + bitola + quantidade + preço unitário), cálculo automático de subtotais e total
+- [x] Listagem e gestão de orçamentos com estados: rascunho, enviado, aprovado e rejeitado
+- [x] Geração e download de PDF profissional do orçamento com logótipo, dados do cliente e tabela de itens
+- [x] Design elegante e profissional (tipografia cuidada, espaçamentos generosos)
+- [x] Criação de testes Vitest para regras de cálculo e regras de negócio
+- [x] Alterar moeda de Euros (€) para Reais (R$) em todo o sistema
+- [x] Permitir preenchimento livre de largura/espessura/comprimento na criação de orçamento
+- [x] Atualizar PDF para suportar dimensões livres e moeda em Reais
+- [x] Converter espessura e largura de milímetros para centímetros no formulário, cálculos, visualizações e PDF
+- [x] Remover aba Bitolas da navegação lateral e das rotas visíveis
+- [x] Adicionar opção de criar cliente em contexto no formulário de novo orçamento
+- [x] Validar o retorno de insertId para selecionar automaticamente o cliente criado em contexto
+- [x] Adicionar pesquisa de clientes por nome ou telefone no novo orçamento
+- [x] Permitir enviar e gerir o logótipo da empresa para uso nos PDFs de orçamento
+- [x] Incluir automaticamente o logótipo configurado no cabeçalho do PDF de orçamento
+- [x] Permitir informar livremente o nome da madeira e o preço por metro cúbico no novo orçamento
+- [x] Corrigir a linha indevida acima das informações da tabela de itens no PDF
+- [x] Criar aba de Orçamentos Aprovados com registro de pagamento
+- [x] Bloquear alteração e exclusão de orçamento pago, exigindo dupla confirmação para desbloqueio excepcional
+- [x] Adicionar filtros por período e nome do cliente na aba de Orçamentos Aprovados
+- [x] Registrar forma de pagamento e data exata de quitação do orçamento
+- [x] Gerar recibo de pagamento em PDF apenas para orçamentos quitados
+- [x] Proteger PDFs de orçamento e recibo com autenticação consistente com o sistema
+- [x] Testar que recibos só são acessíveis a utilizadores autenticados e para documentos quitados
+- [x] Limitar medidas lineares e volumes exibidos a no máximo três casas decimais
+- [x] Remover a aba Madeiras da navegação lateral do sistema
+- [x] Definir a primeira etapa do módulo financeiro, com contas a pagar e receber vinculáveis aos orçamentos
+- [x] Modelar títulos financeiros, baixas e vínculos com orçamentos sem duplicar o histórico comercial
+- [x] Criar cadastros de fornecedores e categorias financeiras
+- [x] Criar contas financeiras para caixa, bancos e carteiras
+- [x] Implementar contas a pagar e receber com vencimento, status e lançamento manual
+- [x] Permitir lançamentos não programados de contas a pagar e receber para ocorrências excepcionais
+- [x] Suportar parcelamento e pagamentos parciais com histórico de baixas
+- [x] Implementar lançamentos recorrentes e alertas automáticos de vencimento
+- [x] Gerar e persistir alertas de vencimento durante o processamento financeiro diário
+- [x] Testar a criação e atualização automática de alertas pelo processamento agendado
+- [x] Testar a criação, transição e resolução de alertas persistidos pelo processamento diário
+- [x] Testar que o processamento diário de recorrências aciona a atualização de alertas financeiros
+- [x] Testar a rota agendada protegida e o retorno das contagens de alertas financeiros
+- [x] Permitir conciliação manual das baixas financeiras por conta de movimentação
+- [x] Criar painel financeiro com fluxo de caixa, vencidos e compromissos futuros
+- [x] Exibir a conta financeira associada a cada baixa na conciliação manual
+- [x] Exibir blocos específicos de títulos vencidos e próximos vencimentos no painel financeiro
+- [x] Corrigir a gravação do histórico de alterações ao enviar ou aprovar um orçamento
+- [x] Testar os fluxos de envio e aprovação após a correção do histórico
+- [x] Testar as transições de envio e aprovação registrando histórico de estado sem erro
+- [x] Reorganizar a barra lateral para priorizar Dashboard financeiro e Financeiro
+- [x] Agrupar contas a pagar e contas a receber como subopções do módulo Financeiro
+- [x] Agrupar Orçamentos e Aprovados como subopções de Vendas
+- [x] Preparar opções visuais de Estoque, Produção e Diesel como módulos futuros
+- [x] Validar a nova estrutura de navegação em telas desktop e mobile
+- [x] Testar a indisponibilidade segura dos módulos futuros na barra lateral
+- [x] Testar o clique em Estoque, Produção e Diesel sem navegação para rotas indisponíveis
+- [x] Renomear a experiência comercial de Orçamentos para Vendas, preservando os documentos e dados existentes
+- [x] Permitir informar vencimento e competência ao criar uma venda
+- [x] Permitir editar vencimento e competência depois do lançamento da venda
+- [x] Sincronizar a alteração de vencimento da venda com a conta a receber vinculada
+- [x] Testar criação e atualização de datas de vendas e recebíveis vinculados
+- [x] Retirar ou cancelar a conta a receber vinculada quando uma venda aprovada for excluída
+- [x] Gerar um número sequencial, único e definitivo somente na aprovação da venda
+- [x] Exibir a numeração definitiva em vendas, recebíveis e documentos após a aprovação
+- [x] Permitir configurar a condição de pagamento parcelada ao clicar no cliente de uma venda aprovada
+- [x] Criar parcelas rastreáveis no Financeiro, cancelando o recebível único sem baixas
+- [x] Cancelar todos os recebíveis vinculados ao excluir uma venda parcelada sem baixas
+- [x] Cobrir o parcelamento de vendas e seus bloqueios de baixa com testes automatizados
+- [x] Validar visualmente e publicar a condição de pagamento parcelada
+- [x] Testar a exclusão de vendas aprovadas e a unicidade da numeração sequencial
+- [x] Exibir explicitamente o número sequencial definitivo da venda na conta a receber vinculada
+- [x] Testar a apresentação do número definitivo da venda nos recebíveis após aprovação
+- [x] Permitir cancelar manualmente contas a receber já lançadas
+- [x] Permitir cancelar manualmente contas a pagar já lançadas
+- [x] Exigir confirmação antes de cancelar um título financeiro ativo
+- [x] Impedir cancelamento de títulos financeiros com pagamentos registrados
+- [x] Testar a remoção dos títulos cancelados das listas ativas de pagar e receber
+- [x] Testar o cancelamento manual e a exclusão dos títulos das consultas ativas de pagar e receber
+- [x] Validar na interface a confirmação e a remoção de um título após cancelamento manual
+- [x] Executar uma validação funcional da interface do Financeiro cancelando um título ativo, confirmando no diálogo e verificando que ele some da lista ativa após a atualização
+- [x] Adicionar um teste integrado para o fluxo de cancelamento manual com confirmação e atualização da listagem, se a infraestrutura permitir
+- [x] Configurar a infraestrutura mínima de teste de interface para cobrir o cancelamento manual sem depender de dados reais
+- [x] Modelar o estorno de baixas com trilha de auditoria, impedindo reversões duplicadas
+- [x] Atualizar títulos e saldos financeiros após o estorno de uma baixa
+- [x] Expor a operação de estorno com validações na API financeira
+- [x] Adicionar ação de estorno com confirmação no histórico de baixas
+- [x] Criar relatório de fluxo de caixa com filtros de período específico
+- [x] Exibir entradas, saídas, saldo líquido e evolução diária no relatório de fluxo de caixa
+- [x] Cobrir regras de estorno e relatório de período com testes automatizados
+- [x] Validar visualmente os filtros e indicadores do relatório de fluxo de caixa na interface financeira
+- [x] Cobrir a confirmação, motivo obrigatório e atualização visual do estorno com teste de interface
+- [x] Permitir abrir diretamente a aba de fluxo de caixa pela URL para facilitar revisão e compartilhamento do relatório
+- [x] Definir um modelo CSV de lançamentos financeiros com cabeçalhos e exemplo para importação
+- [x] Exportar os lançamentos financeiros filtrados para CSV compatível com planilhas
+- [x] Validar importações de lançamentos antes de gravar, incluindo datas, valores, tipos e referências
+- [x] Importar lançamentos válidos sem criar duplicidades e informar as linhas recusadas
+- [x] Adicionar controles de importação, exportação e download de modelo no Financeiro
+- [x] Cobrir o intercâmbio de lançamentos com testes automatizados e validação visual
+- [x] Validar visualmente a tela autenticada do Financeiro confirmando que os botões Modelo CSV, Exportar CSV e Importar CSV aparecem no módulo de Lançamentos
+- [x] Registrar uma verificação visual autenticada do diálogo de importação CSV e do posicionamento dos controles após login
+- [x] Integrar a validação CSV ao procedimento real antes de qualquer gravação financeira
+- [x] Testar a recusa integral de arquivos inválidos e a prevenção de gravação parcial
+- [x] Analisar a planilha de produção atual e documentar seus campos, fórmulas e rotinas operacionais
+- [x] Definir o cadastro e a movimentação de plaquetas como matéria-prima disponível em estoque
+- [x] Modelar o romaneio diário de madeira serrada e a geração rastreável de peças em estoque
+- [x] Integrar a baixa e o estorno de peças à entrega física vinculada ao recebimento confirmado, sem reservar estoque na aprovação da venda
+- [x] Registrar entrega física de venda somente após o recebimento confirmado
+- [x] Alocar automaticamente peças produzidas por dimensão e baixar os lotes na entrega
+- [x] Estornar a entrega de venda com devolução rastreável de peças aos lotes originais
+- [x] Exibir a ação e o estado de entrega física nas vendas aprovadas
+- [x] Corrigir o acesso por URL à tela de vendas aprovadas para validar a entrega física no fluxo real
+- [x] Propor indicadores e relatórios para produção, rendimento, perdas e saldos por lote
+- [x] Impedir reutilização de plaquetas com identificação única e histórico de consumo
+- [x] Vincular cada romaneio a uma única plaqueta de matéria-prima
+- [x] Registrar a saída de peças somente na entrega física confirmada com o recebimento
+- [x] Iniciar o estoque somente por novas entradas manuais, sem importar plaquetas históricas da planilha
+- [x] Implementar schema e persistência de plaquetas com identificador único, estado, saldo e histórico de consumo
+- [x] Criar entidades e fluxo de romaneio vinculando exatamente uma plaqueta por produção, com validações e testes
+- [x] Implementar estoque de peças serradas e etapa de entrega física para baixar peças apenas após o recebimento confirmado
+- [x] Criar entradas manuais iniciais de plaquetas, sem importar automaticamente dados históricos da planilha
+- [x] Renomear a entrada de plaquetas como Estoque de Toras, com essência e medidas de origem
+- [x] Preencher o romaneio automaticamente a partir da plaqueta selecionada no estoque de toras
+- [x] Permitir corrigir as informações pré-preenchidas da plaqueta somente no contexto do romaneio
+- [x] Organizar o lançamento diário em subabas de Tora/Plaqueta e Peças Produzidas
+- [x] Calcular e exibir o aproveitamento entre o volume da tora selecionada e a madeira serrada produzida
+- [x] Gerar e baixar PDF profissional dos romaneios de produção confirmados
+- [x] Cobrir a seleção editável da plaqueta e o PDF de romaneio com testes e validação visual
+- [x] Separar as rotas e abas de Produção e Estoque para que cada módulo abra de forma independente
+- [x] Criar romaneio de carga como cabeçalho de entrada de toras no estoque
+- [x] Permitir adicionar várias plaquetas a um romaneio de carga em formato de lista
+- [x] Registrar essência, diâmetro e comprimento de cada plaqueta recebida
+- [x] Calcular automaticamente o volume individual e o volume total do romaneio de carga
+- [x] Criar a aba Estoque com categorias independentes Toras e Serrado
+- [x] Testar a navegação, o romaneio de carga e os cálculos de volume do estoque
+- [x] Remover a rolagem horizontal desnecessária e redimensionar a lista do romaneio de carga
+- [x] Registrar o valor por m³ de cada tora no romaneio de carga
+- [x] Calcular e exibir automaticamente o valor individual da tora a partir de volume e preço por m³
+- [x] Calcular e exibir o valor total do romaneio de carga
+- [x] Cobrir os cálculos financeiros e validar visualmente o novo layout do romaneio
+- [x] Remover o botão duplicado de novo romaneio de carga da área de cabeçalho do Estoque
+- [x] Reaproveitar essência e preço por m³ ao adicionar uma nova plaqueta no mesmo romaneio
+- [x] Cobrir o preenchimento automático da próxima plaqueta e validar a interface atualizada
+- [x] Adicionar frete ao romaneio de carga e calcular o valor total com as toras e o frete
+- [x] Permitir editar romaneios de carga já registrados com recálculo consistente dos totais
+- [x] Gerar PDF profissional de romaneio de carga para impressão e compartilhamento
+- [x] Cobrir frete, edição e PDF de romaneio de carga com testes e validação visual
+- [x] Testar a geração autenticada do PDF de romaneio de carga, incluindo totais de toras, frete e valor total
+- [x] Validar visualmente o PDF do romaneio de carga gerado com layout e informações financeiras completas
+- [x] Corrigir a sobreposição de textos e valores nos cartões do romaneio de carga em telas estreitas
+- [x] Substituir o frete total pelo valor de frete por m³ calculado automaticamente pelo volume da carga
+- [x] Atualizar o PDF e a edição do romaneio para apresentar o frete por m³ e o frete total calculado
+- [x] Cobrir os novos cálculos e validar visualmente o formulário de carga em tela móvel
+- [x] Definir o modelo de planilha para importação de toras em romaneio de carga
+- [x] Validar integralmente os dados da planilha antes de criar um romaneio e suas plaquetas
+- [x] Importar toras válidas sem duplicar plaquetas e informar linhas recusadas
+- [x] Adicionar botão de importação, modelo baixável e feedback detalhado no Estoque
+- [x] Cobrir a importação de toras com testes automatizados e validação visual
+- [x] Validar visualmente o diálogo de importação de toras, incluindo campos, modelo baixável e layout responsivo
+- [x] Validar visualmente o feedback de erro da importação CSV com linhas recusadas e o feedback de sucesso da importação válida
+- [x] Permitir excluir romaneios de carga quando nenhuma plaqueta tiver sido utilizada na produção
+- [x] Exigir confirmação explícita antes de excluir um romaneio e suas plaquetas disponíveis
+- [x] Impedir a exclusão de romaneios que tenham plaquetas já consumidas, preservando a rastreabilidade
+- [x] Remover a carga de validação CARGA-120001 e a plaqueta VALID-IMPORT-0001 criadas no teste autorizado
+- [x] Cobrir e validar visualmente a exclusão de romaneios
+- [x] Validar no navegador o fluxo completo de exclusão de romaneio: abrir confirmação, excluir uma carga disponível e verificar atualização da listagem sem recarregamento manual
+- [x] Registrar evidência da validação visual da exclusão real pela interface, distinta da remoção administrativa via banco de dados
+- [x] Adicionar filtros por período e origem na listagem de romaneios de carga
+- [x] Limitar a listagem inicial de plaquetas às 10 entradas mais recentes
+- [x] Permitir pesquisar plaquetas de estoque por código de plaqueta ou essência
+- [x] Permitir carregar mais plaquetas conforme a necessidade, sem lista infinita inicial
+- [x] Restringir a exclusão de romaneios ao perfil administrativo no servidor e na interface
+- [x] Cobrir filtros, paginação, pesquisa e autorização administrativa com testes e validação visual
+- [x] Garantir a ordenação decrescente por entrada na consulta paginada de plaquetas e testar que a listagem inicial exibe as 10 mais recentes
+- [x] Executar e confirmar a cobertura automatizada da ordenação das 10 plaquetas mais recentes antes da paginação
+- [x] Permitir selecionar as plaquetas de toras disponíveis serradas no dia, carregando suas medidas com opção de correção
+- [x] Consolidar o volume efetivo das toras utilizadas no romaneio diário de produção
+- [x] Lançar as peças serradas por bitola e quantidade, calculando automaticamente seus metros cúbicos
+- [x] Exibir o aproveitamento diário entre volume de toras serradas e volume de madeira serrada produzida
+- [x] Atualizar as baixas de estoque e a rastreabilidade entre tora, romaneio de produção e peças produzidas
+- [x] Cobrir o fluxo completo de produção diária com testes e validação visual
+- [x] Permitir digitar e localizar a plaqueta diretamente no romaneio diário, sem seleção obrigatória em lista
+- [x] Preencher automaticamente as medidas da plaqueta digitada e permitir correções no romaneio
+- [x] Definir e disponibilizar planilha de importação de plaquetas para a produção diária
+- [x] Importar plaquetas do estoque por planilha, com validação integral e correção das medidas antes da confirmação
+- [x] Cobrir a digitação e a importação de plaquetas de produção com testes e validação visual
+- [x] Corrigir transbordamentos e informações cortadas no formulário de Produção Diária em telas estreitas
+- [x] Remover o botão duplicado de criação de Produção Diária, mantendo uma única ação clara
+- [x] Cobrir e validar visualmente o layout responsivo corrigido da Produção
+- [x] Reorganizar o campo de plaqueta e os botões do romaneio para não comprimir textos em telas estreitas
+- [x] Permitir cadastrar uma plaqueta ainda inexistente diretamente na Produção, com essência e medidas obrigatórias
+- [x] Registrar e consumir a plaqueta avulsa no mesmo romaneio, preservando histórico de entrada e saída
+- [x] Cobrir o fluxo de plaqueta avulsa e validar visualmente o formulário em largura estreita
+- [x] Substituir a criação de linhas vazias por um lançamento único e rápido de bitolas
+- [x] Manter essência, espessura e largura da última peça ao adicionar uma nova bitola, permitindo alterar comprimento e quantidade
+- [x] Empilhar os cartões de toras no romaneio em telas estreitas, sem colunas comprimidas
+- [x] Cobrir o lançamento rápido de peças e validar visualmente a etapa em celular
+- [x] Definir modelo CSV de peças serradas com essência, espessura, largura, comprimento e quantidade
+- [x] Validar integralmente a planilha de peças antes de adicioná-las ao romaneio diário
+- [x] Adicionar modelo baixável, importação e feedback de erros à etapa de peças produzidas
+- [x] Cobrir e validar visualmente a importação de peças serradas por planilha
+- [x] Permitir editar romaneios de Produção Diária confirmados sem perder rastreabilidade de toras e peças
+- [x] Modelar lançamento de peças em matriz: colunas por espessura × largura e linhas por comprimento
+- [x] Adaptar a planilha de importação de peças ao formato matricial operacional do romaneio
+- [x] Oferecer prévia, validação e conversão da matriz em itens de peças antes de salvar
+- [x] Cobrir a edição e o lançamento matricial de peças com testes e validação visual
+- [x] Corrigir o salvamento da edição para aceitar as plaquetas já vinculadas e consumidas pelo próprio romaneio
+- [x] Cobrir a edição de um romaneio confirmado sem revalidar indevidamente a disponibilidade das suas plaquetas
+- [x] Corrigir os totais e rótulos iniciais exibidos na listagem de romaneios diários de Produção
+- [x] Adicionar filtros de estoque serrado por essência, espessura, largura e comprimento/bitola
+- [x] Cobrir e validar visualmente a listagem de Produção e os filtros de estoque serrado
+- [x] Exibir o total de peças e o volume após a aplicação de filtros no estoque serrado
+- [x] Agrupar o estoque serrado por essência e medida, com expansão por comprimento
+- [x] Integrar a confirmação de venda à baixa do estoque serrado por peça e comprimento
+- [x] Exibir saldos negativos controlados para itens vendidos sem disponibilidade em estoque
+- [x] Cobrir a agrupação, a baixa por venda e os saldos negativos com testes e validação visual
+- [x] Criar relatório de rotação do estoque serrado por essência e medida
+- [x] Criar relatório de rutura do estoque serrado por essência e medida
+- [x] Criar página de ajuste e inventário com regularização rastreável de saldos negativos
+- [x] Cobrir relatórios, ajustes e permissões com testes e validação visual
+- [x] Corrigir a normalização de bitolas decimais na criação de déficits de estoque por entrega
+- [x] Reparar os lotes de déficit existentes com dimensões e volumes ampliados indevidamente
+- [x] Cobrir a conversão decimal e a reparação de déficits com testes e validação visual
+- [x] Gerar uma conta a pagar de custo de matéria-prima ao confirmar cada romaneio de carga de toras
+- [x] Vincular romaneio de carga, fornecedor, vencimento e título financeiro sem permitir duplicidade
+- [x] Cobrir a integração de entrada de toras e contas a pagar com testes e validação visual
+- [x] Modelar o tanque de combustível, notas de diesel e abastecimentos com rastreabilidade
+- [x] Criar lembrete financeiro de pagamento para nota de diesel sem contabilizá-la como custo operacional
+- [x] Lançar o custo real de diesel somente por abastecimento, usando o custo médio do tanque
+- [x] Implementar a tela de Diesel com saldo, notas agendadas e histórico de abastecimentos
+- [x] Cobrir o módulo de combustível com testes e validação visual
+- [x] Inventariar os seletores de entidades em todos os módulos e definir os pontos de criação contextual
+- [x] Criar um seletor reutilizável com pesquisa digitável e ação Criar novo como primeira opção
+- [x] Aplicar o padrão a fornecedores, clientes, categorias e contas financeiras onde houver seleção operacional
+- [x] Cobrir os seletores pesquisáveis e as criações em contexto com testes e validação visual
+- [x] Permitir editar vencimento e dados financeiros da conta a pagar vinculada a romaneio de carga
+- [x] Sincronizar a alteração de vencimento entre o título financeiro e o romaneio sem criar duplicidade
+- [x] Cobrir a edição de agendamentos vinculados com testes e validação visual
+- [x] Separar operacionalmente contas a pagar, contas a receber, contas pagas e contas recebidas
+- [x] Adicionar filtros financeiros por descrição, faixa de valor e período de vencimento ou recebimento
+- [x] Destacar títulos a pagar ou receber no dia da consulta
+- [x] Cobrir a reorganização financeira com testes e validação visual
+- [x] Criar painel de previsão semanal de fluxo de caixa com entradas, saídas e saldo acumulado
+- [x] Exportar em PDF a lista financeira filtrada, incluindo filtros, totais e títulos exibidos
+- [x] Cobrir a previsão semanal e a exportação PDF com testes e validação visual
+- [x] Implementar cálculo e consulta da previsão semanal de fluxo de caixa com títulos em aberto
+- [x] Exibir painel semanal de entradas, saídas, resultado e saldo projetado no Fluxo de Caixa
+- [x] Exportar em PDF as listas financeiras visíveis, respeitando filtros e totais
+- [x] Fazer Contas a pagar e Contas a receber abrirem diretamente as listas financeiras correspondentes
+- [x] Reforçar o contraste e a legibilidade dos itens da barra lateral
+- [x] Adicionar alternância persistente entre modo claro e modo escuro
+- [x] Cobrir navegação financeira e alternância de tema com testes e validação visual
+- [x] Fazer os atalhos financeiros abrirem a lista no topo da tela, sem reter o resumo antes da lista
+- [x] Permitir expandir e recolher individualmente os grupos de menus da barra lateral
+- [x] Adicionar atalhos laterais diretos para Contas pagas e Contas recebidas
+- [x] Cobrir os grupos expansíveis e os novos atalhos com testes e validação visual
+- [x] Fazer os atalhos de Contas pagas e Contas recebidas exibirem diretamente seus históricos
+- [x] Disponibilizar modelo de planilha para importar fornecedores
+- [x] Validar dados, identificar duplicidades e importar fornecedores com pré-visualização
+- [x] Cobrir a importação de fornecedores com testes e validação visual
+- [x] Reestruturar a inclusão de itens de venda por bitola e largura compartilhadas
+- [x] Permitir lançar vários comprimentos e quantidades em uma única grelha de venda
+- [x] Preservar cálculo, resumo, validações e baixa de estoque dos itens individuais gerados
+- [x] Cobrir o lançamento agrupado de itens de venda com testes e validação visual
+- [x] Ajustar a grelha de comprimentos para manter todos os campos e ações acessíveis no celular
+- [x] Exibir a disponibilidade do estoque serrado para cada comprimento informado no romaneio de venda
+- [x] Transformar Madeira em lista pesquisável, padronizada e com ação Criar novo
+- [x] Permitir guardar, selecionar e excluir modelos reutilizáveis de medidas frequentes
+- [x] Cobrir disponibilidade, modelos e cadastro de madeira com testes e validação visual
+- [x] Corrigir a conversão e a exibição dos valores nos cartões do Dashboard financeiro
+- [x] Fazer próximos compromissos exibirem o saldo financeiro real de cada título
+- [x] Criar testes de consistência entre Dashboard e alertas financeiros
+- [x] Calcular títulos em atraso também pela data de vencimento quando o estado ainda não foi atualizado
+- [x] Ocultar e resolver alertas que não correspondem mais a títulos financeiros pendentes
+- [x] Modelar extratos bancários, suas linhas e os vínculos auditáveis de conciliação por conta financeira
+- [x] Importar e validar extratos bancários em CSV e OFX, com prevenção de linhas duplicadas
+- [x] Sugerir títulos financeiros compatíveis por tipo, valor, data e descrição do extrato
+- [x] Permitir confirmar, desfazer e sinalizar divergências de conciliação sem duplicar baixas
+- [x] Criar a tela de Conciliação Bancária com filtros, totais, pré-visualização e navegação financeira
+- [x] Cobrir regras de importação e conciliação com testes, validar a interface e publicar o módulo
+- [x] Gerar identificação interna única para tora sem plaqueta física, registrando a ocorrência no romaneio
+- [x] Aceitar plaquetas físicas duplicadas e sinalizar o conflito no estoque, no romaneio e na importação
+- [x] Destacar visualmente toras sem plaqueta e plaquetas duplicadas nas listas operacionais
+- [x] Exigir confirmação e preenchimento manual das medidas antes de consumir uma plaqueta duplicada na Produção Diária
+- [x] Cobrir identificações internas, duplicidade e consumo manual com testes, validação visual e publicação
+- [x] Criar relatório operacional de plaquetas duplicadas e pendentes de conferência
+- [x] Exibir totais, filtros e acesso direto ao relatório de exceções do estoque de toras
+- [x] Numerar duplicidades de forma discreta como plaqueta física, plaqueta física² e sucessivas ocorrências
+- [x] Aplicar a identificação discreta na interface e nos PDFs de romaneio de carga
+- [x] Cobrir o relatório e a numeração de duplicidade com testes, validação visual e publicação
+- [x] Modelar anexos financeiros e dados extraídos de boleto com rastreabilidade por lançamento
+- [x] Permitir anexar notas fiscais, boletos e imagens nos lançamentos financeiros com armazenamento seguro
+- [x] Extrair, validar e exibir código de barras ou linha digitável de boleto para conferência
+- [x] Exibir anexos e dados de boleto ao criar, editar e consultar um agendamento de pagamento
+- [x] Cobrir anexos, identificação de boleto e permissões com testes, validação visual e publicação
+- [x] Adicionar cópia em um clique do código de barras ou linha digitável do boleto com confirmação visual
+- [x] Criar modal de pré-visualização segura para imagens e PDFs anexados aos lançamentos
+- [x] Cobrir cópia e pré-visualização com testes, validação visual e publicação
+- [x] Reformular o lançamento de madeira serrada na Produção Diária em grade por medida, com bitola e largura compartilhadas
+- [x] Permitir informar vários comprimentos e quantidades na mesma grade de produção serrada
+- [x] Preservar cálculos de volume, aproveitamento, importação e edição de romaneios com a nova grade
+- [x] Cobrir a grade de produção serrada com testes, validação visual responsiva e publicação
+- [x] Projetar login profissional com acesso individual por colaborador
+- [x] Modelar empresas, equipes e papéis de acesso para operação multiempresa
+- [x] Garantir isolamento de todos os dados operacionais e financeiros por empresa
+- [x] Criar a experiência de cadastro inicial da empresa e convite de colaboradores
+- [x] Cobrir autenticação, permissões e segregação de dados com testes e validação visual
+- [x] Criar empresas, membros, convites e credenciais de acesso por e-mail e senha
+- [x] Migrar os dados atuais para o ambiente inicial da FK Madeiras sem perda de histórico
+- [x] Associar todos os registos operacionais, financeiros e documentos à empresa ativa
+- [x] Validar todas as consultas e mutações no servidor pela associação empresa-utilizador
+- [x] Implementar sessão própria, entrada e primeiro acesso; adiar a recuperação automática de senha conforme solicitado
+- [x] Criar perfis Proprietário, Administrador, Financeiro, Vendas, Produção/Estoque e Consulta
+- [x] Criar a tela profissional de login e a área de colaboradores com convites
+- [x] Cobrir o isolamento de empresas, papéis e login com testes automatizados e validação visual
+- [x] Adiar a configuração do serviço de e-mail transacional para recuperação de senha, conforme solicitado
+- [x] Adiar o envio de links de redefinição de senha para uma próxima etapa, conforme solicitado
+- [x] Adiar a cobertura de recuperação por e-mail até a ativação futura do remetente transacional
+- [x] Registrar a recuperação automática de senha por e-mail como melhoria futura a retomar após configurar remetente válido
+- [x] Criar as categorias Pagos e Entregues abaixo de Aprovados no menu de Vendas
+- [x] Separar o controlo de pagamento do controlo de entrega em cada venda aprovada
+- [x] Permitir registrar entrega antes ou depois do pagamento, preservando datas e rastreabilidade
+- [x] Definir regras para retirada após pagamento e entrega a prazo sem bloquear o fluxo comercial
+- [x] Cobrir as novas categorias e os dois fluxos de venda com testes e validação visual
+- [x] Criar a categoria automática Concluídas para vendas pagas e entregues
+- [x] Remover a dependência entre pagamento e entrega, preservando a baixa física no estoque
+- [x] Registrar data, responsável, modalidade e observação em cada entrega
+- [x] Manter a conta a receber em aberto após entrega a prazo e quitá-la quando o pagamento for registrado
+- [x] Modelar o Caixa Cheque como conta financeira própria, com saldo compatível com os cheques disponíveis
+- [x] Registrar cheques individualmente em recebimentos, com referência, valor, cliente e rastreabilidade da entrada
+- [x] Permitir selecionar cheques disponíveis para efetuar pagamentos pelo Caixa Cheque, registrando a saída individual
+- [x] Criar tela de Caixa Cheque com saldo, cheques disponíveis, utilizados e histórico de movimentações
+- [x] Impedir reutilização, valores divergentes e saídas sem cobertura por cheques selecionados
+- [x] Cobrir recebimento, pagamento, estorno e interface do Caixa Cheque com testes e validação visual
+- [x] Registrar data de compensação individual no recebimento de cada cheque
+- [x] Destacar no Caixa Cheque os itens com compensação próxima ou vencida
+- [x] Permitir excluir contas financeiras sem baixas, extratos ou demais movimentações vinculadas
+- [x] Bloquear com mensagem clara a exclusão de contas que possuam movimentações
+- [x] Cobrir data de compensação, alertas e exclusão segura de contas com testes e validação visual
+- [x] Permitir editar lançamentos em aberto, pagos e recebidos, preservando consistência de títulos e baixas
+- [x] Permitir excluir lançamentos em aberto, pagos e recebidos com confirmação explícita
+- [x] Impedir edição ou exclusão de lançamentos conciliados até a desconciliação bancária correspondente
+- [x] Exibir instrução clara para desconciliar antes de editar ou excluir itens vinculados ao extrato
+- [x] Atualizar listas de pagar, receber, pagos e recebidos com ações e diálogos de edição e exclusão
+- [x] Cobrir alterações, exclusões, bloqueios por conciliação e validação visual com testes automatizados
+- [x] Excluir cheques de entrada quando o recebimento de origem for excluído, sem convertê-los em estorno
+- [x] Reservar o estado estornado exclusivamente para cheques devolvidos
+- [x] Permitir registrar cheque devolvido com motivo, data e rastreabilidade do impacto financeiro
+- [x] Exibir cheques devolvidos separadamente no Caixa Cheque, sem incluí-los no saldo disponível
+- [x] Cobrir exclusão de recebimento, devolução de cheque e reflexos de saldo com testes e validação visual
+- [x] Modelar o depósito de cheque compensado como transferência interna do Caixa Cheque para conta bancária
+- [x] Permitir selecionar conta bancária de destino e registrar data de depósito, sem duplicação
+- [x] Registrar histórico de cheques compensados e depositados por conta financeira
+- [x] Exibir no Caixa Cheque os estados compensado, depositado e a conta bancária de destino
+- [x] Manter transferências de cheque fora das entradas e saídas do relatório de fluxo de caixa
+- [x] Cobrir depósitos, bloqueio de duplicidade, histórico por conta e neutralidade do fluxo de caixa com testes e validação visual
+- [x] Distinguir no Fluxo de Caixa o pagamento de compra de diesel para o tanque do custo operacional de abastecimento
+- [x] Explicar no relatório que o saldo de abertura incorpora movimentações anteriores ao intervalo selecionado
+- [x] Cobrir a identificação da compra de diesel, o saldo de abertura e os filtros temporais do fluxo com testes e validação visual
+- [x] Corrigir a exclusão de nota de diesel para reverter ou preservar de forma explícita os reflexos no tanque e no Fluxo de Caixa
+- [x] Informar claramente na interface quando uma nota não puder ser excluída por já possuir abastecimentos vinculados
+- [x] Cobrir a exclusão de nota de diesel sem abastecimentos e o bloqueio seguro quando houver movimentação de tanque vinculada
+- [x] Permitir remover uma Produção Diária quando suas peças ainda não tiverem sido movimentadas
+- [x] Reverter o consumo das plaquetas e excluir as peças geradas ao remover um romaneio de produção
+- [x] Bloquear a remoção de Produção Diária com peças já vinculadas a vendas, inventário ou outros movimentos de estoque
+- [x] Adicionar confirmação, mensagens de bloqueio e testes para a exclusão segura de Produção Diária
+- [x] Modelar o serviço de Serragem de Terceiros, com cliente, toras próprias do cliente e identificação de propriedade
+- [x] Criar lançamento em formato de planilha para toras serradas de terceiros, sem entrada no estoque próprio de toras
+- [x] Reutilizar a grade de produção serrada para registrar peças originadas de Serragem de Terceiros
+- [x] Registrar peças de terceiros no estoque com identificação visual de proprietário e bloqueio de venda como estoque próprio
+- [x] Permitir informar e cobrar o valor do serviço de serragem sem transferir a propriedade das peças
+- [x] Cobrir fluxo de serviço, propriedade de estoque, cobrança e interface com testes e validação visual
+- [x] Registrar retirada parcial ou total das peças de Serragem de Terceiros pelo cliente, com data e responsável
+- [x] Remover do saldo físico apenas as peças de terceiros efetivamente retiradas e manter histórico rastreável
+- [x] Bloquear retirada acima do saldo disponível e preservar a segregação entre estoque próprio e de terceiros
+- [x] Ajustar o formulário de Serragem de Terceiros para largura responsiva, sem corte horizontal e com grade de uso mais fluido
+- [x] Permitir pesquisar e criar um novo cliente diretamente no seletor do serviço de serragem
+- [x] Cobrir retirada, saldo remanescente, criação de cliente e responsividade com testes e validação visual
+- [x] Calcular automaticamente o volume individual e total das toras de Serragem de Terceiros a partir de diâmetro e comprimento
+- [x] Alterar a cobrança de Serragem de Terceiros para preço por m³ de tora serrada, com valor total calculado
+- [x] Reaproveitar automaticamente a essência da tora anterior ao adicionar uma nova tora de terceiros
+- [x] Cobrir cálculos de volume, cobrança por m³ e preenchimento sequencial de essência com testes e validação visual
+- [x] Impedir que linhas vazias de toras ou peças adicionadas no formulário de Serragem de Terceiros bloqueiem o registro do serviço
+- [x] Padronizar indicação visual antecipada para campos e linhas obrigatórias incompletas em todos os formulários operacionais
+- [x] Reformular a Serragem de Terceiros para usar o mesmo fluxo e a mesma grade operacional da Produção Diária, preservando cliente proprietário, estoque de terceiros e cobrança por m³
+- [x] Inserir no topo a nova tora adicionada em Produção Diária e Serragem de Terceiros, mantendo as toras já lançadas abaixo
+- [x] Preencher a grade de peças de Produção Diária e Serragem de Terceiros com comprimentos padrão editáveis de 2 a 9 metros, em intervalos de 0,5 metro
+- [x] Cobrir a ordenação das toras e os comprimentos padrão editáveis com testes e validação visual nos dois fluxos
+- [x] Calcular volume de toras, volume de peças e percentual de aproveitamento separadamente por essência em Produção Diária e Serragem de Terceiros
+- [x] Exibir no formulário e nos romaneios um resumo de aproveitamento por essência, preservando o consolidado geral
+- [x] Cobrir cenários de múltiplas essências com rendimentos distintos, testes e validação visual
+- [x] Exibir a perda de volume por essência, em m³ e percentual, no resumo de Produção Diária e Serragem de Terceiros
+- [x] Incluir o detalhamento de volumes, aproveitamento e perdas por essência no PDF dos romaneios de produção
+- [x] Adicionar filtros por essência e período aos relatórios de produção para análise dos romaneios registrados
+- [x] Cobrir indicadores, PDF e filtros analíticos de produção com testes e validação visual
+- [x] Permitir a referência externa “-” repetida em toras da Serragem de Terceiros, mantendo unicidade de plaquetas no estoque próprio
+- [x] Corrigir a divergência entre a contagem de toras disponíveis em Estoque e em Produção Diária, garantindo o mesmo saldo elegível nos dois módulos
+- [x] Estabilizar o teste de interface de estorno financeiro para eliminar falhas intermitentes de tempo e interação
+- [x] Exibir no indicador de Produção Diária o volume total disponível de toras em m³, além da quantidade
+- [x] Adicionar atalho no indicador de toras da Produção para abrir o Estoque já filtrado por toras disponíveis
+- [x] Permitir editar com segurança a Serragem de Terceiros, incluindo preço, toras e peças, preservando estoque, cobrança e rastreabilidade
+- [x] Adicionar importação por planilha na Serragem de Terceiros, com modelo baixável, validação integral e prévia antes de gravar
+- [x] Corrigir a responsividade dos campos de toras e dos indicadores de produção serrada e aproveitamento em telas estreitas
+- [x] Ampliar o diálogo de lançamento de Produção para evitar compressão dos campos de toras em telas móveis
+- [x] Permitir inserir uma tora manualmente ao pressionar Enter no formulário de Produção
+- [x] Navegar por colunas na grade manual de peças: Tab entre comprimentos e Tab entre quantidades correspondentes
+- [x] Reorganizar os indicadores da etapa de Peças Serradas e o painel por essência para evitar compressão em telas estreitas
+- [x] Criar competência reutilizável que padronize investigação, implementação, testes, validação visual e publicação de evoluções do ERP
+- [x] Corrigir a divergência entre a quantidade de toras disponíveis e o volume total em m³ exibido na Produção
+- [x] Eliminar a reincidência de tempo excedido no teste financeiro de estorno identificado na suíte completa
+- [x] Exibir o volume médio por tora no cartão de disponibilidade da Produção Diária
+- [x] Detalhar volume e quantidade disponíveis por essência no atalho de toras disponíveis
+- [x] Alertar visualmente quando a relação entre quantidade e volume das toras apresentar variação atípica explicável
+- [x] Corrigir o retorno interno de Pagas para Vendas para impedir a abertura de uma venda inexistente
+- [x] Exibir contadores visuais com o total de vendas em cada fila operacional de Vendas
+- [x] Permitir confirmar uma variação atípica de volume por essência para ocultá-la até surgir um novo caso
+- [x] Permitir lançar o aproveitamento manual em m³ por essência na Produção Diária e registrá-lo como estoque identificado
+- [x] Exibir produção de peças romaneadas e produção total com aproveitamento em valores separados
+- [x] Permitir incluir opcionalmente o aproveitamento manual no percentual de produção, mantendo-o fora do cálculo por padrão
+- [x] Permitir selecionar e baixar o estoque identificado de aproveitamento diretamente na tela de Vendas
+- [x] Preservar a rastreabilidade e o estorno do aproveitamento entregue em cada venda
+- [x] Permitir selecionar e incluir aproveitamento identificado diretamente no romaneio de itens da Venda
+- [x] Auditar todos os relatórios PDF gerados pelo ERP quanto a cortes, sobreposições e quebras de página
+- [x] Corrigir paginação, cabeçalhos de tabela e identificações longas nos PDFs de Vendas, Estoque, Produção, Serragem, Financeiro e Recibos
+- [x] Criar testes e renderizações de regressão para os cenários críticos de relatórios PDF
+- [x] Criar pré-visualização de PDF no navegador com confirmação explícita antes do download
+- [x] Reestruturar o relatório de Produção Diária em grade compacta por bitola e comprimento
+- [x] Exibir por bitola o total de peças, volume e participação percentual na produção serrada
+- [x] Cobrir a pré-visualização e a grade de produção no PDF com testes automatizados e validação visual
+- [x] Ampliar a pré-visualização de PDFs para ocupar a área útil de leitura em desktop e celular
+- [x] Remover o painel lateral de miniaturas e priorizar uma página legível por vez no leitor de PDF
+- [x] Validar visualmente a pré-visualização redesenhada e cobrir o novo layout com testes de regressão
+- [x] Corrigir a pré-visualização para leitura ampliada e sem navegação lateral de miniaturas
+- [x] Inverter a grade de Produção: bitolas em colunas superiores e comprimentos em linhas
+- [x] Iniciar a grade de Produção sempre em uma nova página após a listagem de toras
+- [x] Cobrir com testes a orientação invertida e a quebra obrigatória de página da grade
+- [x] Padronizar todas as porcentagens exibidas nas tabelas da interface como números inteiros
+- [x] Padronizar todas as porcentagens dos PDFs como números inteiros, sem alterar cálculos internos
+- [x] Ajustar o espaçamento e a largura do texto no resumo verde da grade de Produção
+- [x] Cobrir a regra de arredondamento percentual com testes de regressão
+- [x] Permitir selecionar o tipo de comercialização de cada item de Nova Venda: m³, unidade ou pacote
+- [x] Adaptar quantidade, preço unitário, total e validações ao tipo de comercialização selecionado
+- [x] Manter a baixa e a disponibilidade de estoque físico restritas aos itens vendidos por metragem, sem movimentar automaticamente itens por unidade ou pacote
+- [x] Atualizar romaneios, recibos e documentos de Venda para apresentar corretamente a unidade comercial
+- [x] Cobrir os três tipos de comercialização em cálculos, estoque e formulários com testes de regressão
+- [x] Permitir definir a composição exata de cada pacote comercial, com itens, medidas e quantidades incluídos
+- [x] Exibir a composição detalhada dos pacotes na Venda e no respectivo PDF, preservando o total comercial do pacote
+- [x] Criar cadastro de produtos comerciais recorrentes para reutilização rápida em Novas Vendas
+- [x] Permitir incluir um produto comercial cadastrado, inclusive pacotes, diretamente no romaneio de itens da Venda
+- [x] Permitir alterar o nome e demais informações operacionais de fornecedores existentes
+- [x] Permitir selecionar vários romaneios de entrada e atualizar em lote os dados de cabeçalho autorizados
+- [x] Permitir selecionar várias Produções Diárias e atualizar em lote seus dados de cabeçalho autorizados
+- [x] Permitir selecionar várias Serragens de Terceiros e atualizar em lote seus dados de cabeçalho autorizados
+- [x] Cobrir pacotes, produtos recorrentes, fornecedores e edições em lote com testes de regressão
+- [x] Confirmar e remover a validação remanescente que exige plaqueta ou referência na Serragem de Terceiros
+- [x] Cobrir o avanço publicado ao romaneio de peças sem identificação de tora
+- [x] Corrigir a busca da Produção Diária que não reconhece a plaqueta 1012 disponível no estoque
+- [x] Cobrir a identificação da plaqueta por código físico e código interno no fluxo de produção
+- [x] Destacar em verde o aviso de plaqueta encontrada na Produção Diária
+- [x] Validar o contraste visual do aviso de disponibilidade da plaqueta
+- [x] Analisar os requisitos da nova implantação descrita no ficheiro anexado
+- [x] Criar pessoas, cargos, departamentos e histórico salarial do módulo de RH
+- [x] Implementar dependentes, eventos de folha e adiantamentos com saldo controlado
+- [x] Criar tabelas tributárias versionadas e o motor de cálculo da folha
+- [x] Implementar competências, fechamento, reabertura e espelhos de pagamento
+- [x] Gerar títulos financeiros idempotentes para salários e encargos da folha
+- [x] Adicionar página de RH, dashboard, relatórios, auditoria e permissões específicas
+- [x] Cobrir o módulo de RH e Folha com testes automatizados e validação visual
+- [x] Calcular o total de peças produzidas agrupado por bitola na Produção Diária
+- [x] Exibir os totais por bitola no painel-resumo de produção sem comprometer a responsividade
+- [x] Cobrir o resumo de peças por bitola com teste de regressão
+- [x] Mapear a sequência operacional do tutorial guiado de RH e Folha
+- [x] Criar um tutorial interativo dentro da página de RH
+- [x] Cobrir a abertura, navegação e conclusão do tutorial com testes de regressão
+- [x] Mapear os vínculos que impedem remover um colaborador de RH com segurança
+- [x] Adicionar remoção confirmada de colaboradores sem vínculos no módulo de RH
+- [x] Cobrir a remoção e os bloqueios de histórico com testes de regressão
+- [x] Distinguir histórico salarial cadastral de movimentações efetivas na remoção de RH
+- [x] Permitir remover colaboradores sem folha, adiantamento, evento lançado ou vínculo financeiro
+- [x] Cobrir a remoção de cadastro sem movimentação e os bloqueios preservados
+- [x] Exibir na tabela de colaboradores os vínculos específicos que bloqueiam a exclusão
+- [x] Permitir editar cargos, departamentos e eventos de folha
+- [x] Permitir remover cargos, departamentos e eventos sem vínculos de uso
+- [x] Cobrir indicadores de vínculo e manutenção de cadastros auxiliares com testes de regressão
+- [x] Investigar a falha de aprovação de venda ao criar a reserva de número sequencial
+- [x] Corrigir a persistência da sequência definitiva para vendas aprovadas
+- [x] Adicionar teste de regressão para a aprovação da venda PENDENTE-390001
+- [x] Mapear o cálculo atual da folha, IRRF, INSS, dependentes e regras tributárias do RH
+- [x] Modelar regras de IRRF versionadas com deduções, desconto simplificado e redução configurável
+- [x] Implementar cálculo separado de base, progressivo, redução e IRRF final
+- [x] Integrar a regra de IRRF 2026 à folha e à tela de regras tributárias
+- [x] Exibir memória de cálculo do IRRF para conferência na folha
+- [x] Cobrir cenários de IRRF 2026 e regressões da folha com testes automatizados
+- [x] Definir o escopo do RH simplificado focado em gestão interna e custos
+- [x] Desenhar as telas e os fluxos prioritários de colaboradores, pagamentos e adiantamentos
+- [x] Especificar o cálculo gerencial de provisões de férias e 13º proporcional
+- [x] Separar funcionalidades gerenciais das obrigações conduzidas pela contabilidade
+- [x] Mapear todas as estruturas atuais de folha que serão descontinuadas do fluxo principal
+- [x] Criar configurações versionadas de custos trabalhistas estimados e outros custos
+- [x] Criar custos adicionais específicos por colaborador com vigência e recorrência
+- [x] Implementar cálculo de custo mensal e anual estimado por colaborador e equipe
+- [x] Reformular a página RH como Gestão de Colaboradores, custos e previsões
+- [x] Integrar opcionalmente lançamentos estimados ao Financeiro sem criar títulos oficiais por padrão
+- [x] Cobrir a reformulação do RH gerencial com testes de cálculo, segurança e interface
+- [x] Criar relatório de custo de colaboradores com filtros por pessoa, departamento, cargo e situação
+- [x] Mapear os custos recorrentes atuais e definir o contrato de benefícios por colaborador
+- [x] Implementar cadastro, alteração e remoção segura de benefícios recorrentes por colaborador
+- [x] Integrar benefícios individuais ao custo mensal, às projeções e aos relatórios
+- [x] Criar controles de benefícios recorrentes na Gestão de Colaboradores
+- [x] Cobrir benefícios recorrentes com testes de cálculo, segurança e interface
+- [x] Revisar e reutilizar as regras de bloqueio para remoção de colaboradores
+- [x] Adicionar ação de remoção com confirmação explícita na Gestão de Colaboradores
+- [x] Exibir os vínculos que impedem a remoção e preservar dados movimentados
+- [x] Cobrir a remoção de colaboradores na nova interface com testes de regressão
+- [x] Mapear o estado atual de colaboradores e os impactos de inativação nos custos e listagens
+- [x] Implementar inativação e reativação de colaboradores com preservação de histórico
+- [x] Ajustar listas e cálculos para considerar somente colaboradores ativos por padrão
+- [x] Criar ações confirmadas de inativar e reativar na Gestão de Colaboradores
+- [x] Cobrir inativação, reativação e preservação de histórico com testes de regressão
+- [x] Permitir reativar colaboradores afastados e inativos pela Gestão de Colaboradores
+- [x] Permitir excluir colaboradores inativos sem lançamentos financeiros, preservando os demais bloqueios de histórico
+- [x] Adicionar desconto estimado de INSS opcional aos custos gerenciais de colaboradores
+- [x] Atualizar interface e testes de regressão das novas regras de situação, exclusão e INSS
+- [x] Mapear descontos e componentes disponíveis para previsão de salário líquido
+- [x] Implementar cálculo gerencial de salário líquido estimado por colaborador
+- [x] Criar dashboard de previsão de salário líquido na Gestão de Colaboradores
+- [x] Cobrir cálculo, filtros e interface do dashboard com testes de regressão
+- [x] Mapear os adiantamentos e benefícios aplicáveis à previsão de líquido a pagar
+- [x] Permitir definir benefícios e vales como descontos gerenciais em folha
+- [x] Descontar adiantamentos pendentes e benefícios marcados no salário líquido previsto
+- [x] Atualizar o dashboard líquido, formulários e testes de regressão dos descontos
+- [x] Mapear o lançamento de toras sem plaqueta e o parcelamento de adiantamentos
+- [x] Permitir registrar tora sem plaqueta na Produção Diária com identificação rastreável
+- [x] Permitir parcelar adiantamentos e descontar somente a parcela da referência mensal
+- [x] Atualizar a Produção Diária, os adiantamentos, o dashboard líquido e os testes de regressão
+- [x] Analisar as estruturas atuais de RH e definir a migração segura para fichas financeiras individuais
+- [x] Modelar lançamentos financeiros de colaborador com créditos, débitos, pagamentos, competências, status e auditoria
+- [x] Criar categorias configuráveis de créditos e débitos e regras de cancelamento sem perda de histórico
+- [x] Implementar extrato cronológico, saldo acumulado e ficha individual de cada colaborador
+- [x] Integrar adiantamentos e pagamentos ao Financeiro sem duplicar saídas financeiras
+- [x] Criar competências de salários e encargos exclusivamente gerenciais, separadas das fichas financeiras
+- [x] Configurar FGTS, INSS patronal, outros encargos e provisões como estimativas gerenciais editáveis
+- [x] Criar dashboard de RH, Valores a Pagar e relatórios de ficha, custos e encargos
+- [x] Reorganizar a navegação do RH e retirar o fluxo de folha oficial da experiência principal
+- [x] Cobrir a reestruturação de RH com migrações não destrutivas, testes e validação visual
+- [x] Adicionar ações rápidas para salário, adiantamento, desconto, provento e pagamento na ficha financeira
+- [x] Completar filtros de ficha e valores a pagar por situação, categoria e tipo de lançamento
+- [x] Exibir a composição por colaborador e os totais de salários, FGTS, INSS patronal, encargos e provisões na competência
+- [x] Validar a complementação de filtros e encargos com testes de regressão e revisão visual
+- [x] Mapear cada seção legada do RH e retirar da navegação os fluxos que duplicam informações
+- [x] Criar uma rota e uma interface de RH inteiramente novas, isoladas de Gestão de Colaboradores e Folha
+- [x] Recriar o cadastro essencial de colaboradores, ficha financeira, lançamentos e pagamentos conforme o novo escopo
+- [x] Recriar custos, encargos e competências apenas como planejamento interno, sem obrigações oficiais
+- [x] Preservar dados existentes em estruturas históricas, sem os reutilizar na nova experiência visual
+- [x] Validar a substituição completa do RH com testes, migração não destrutiva e revisão visual
+- [x] Mapear os campos editáveis em lote e os bloqueios de títulos financeiros baixados ou conciliados
+- [x] Implementar atualização em lote de contas a pagar e receber com validação por título e auditoria
+- [x] Adicionar seleção múltipla e diálogo de edição em lote nas listas financeiras
+- [x] Cobrir edição em lote com testes de regras e validação visual
+- [x] Mapear os campos e atalhos do romaneio de carga para a nova grade de entrada sequencial
+- [x] Transformar a inclusão de toras do romaneio em grade estilo planilha dentro do sistema
+- [x] Calcular automaticamente volumes, valores e totais enquanto as linhas são preenchidas
+- [x] Reaproveitar os dados da linha anterior e permitir adição rápida de muitas toras por teclado
+- [x] Cobrir a grade de romaneio com testes e validação visual desktop e móvel
+- [x] Mapear os contratos e os campos de clientes para uma importação segura por planilha
+- [x] Implementar prévia de importação de clientes com validação de dados e prevenção de duplicados
+- [x] Adicionar modelo de planilha e relatório de linhas importadas, ignoradas e recusadas
+- [x] Corrigir o dimensionamento e a rolagem horizontal da grade de romaneio de carga
+- [x] Mover o foco automaticamente para a plaqueta da nova linha após Enter no valor por m³
+- [x] Cobrir importação e atalhos de romaneio com testes e validação visual
+- [x] Mapear os cálculos e dados persistidos do novo pedido para incluir ajustes comerciais
+- [x] Persistir frete por tonelada, peso da carga e abatimento de frete no pedido de venda
+- [x] Permitir comissão de vendedor em percentual ou valor fixo sobre o subtotal após o frete
+- [x] Permitir taxas em percentual ou valor fixo sobre o subtotal após o frete
+- [x] Exibir demonstrativo de acerto com bruto, frete, base pós-frete, comissão, taxas e valor final
+- [x] Cobrir cálculos de ajustes comerciais com testes e validação visual
+- [x] Mapear a persistência atual de ajustes comerciais, relatórios de vendas e geração de PDF
+- [x] Permitir cadastrar múltiplas taxas adicionais por pedido em percentual ou valor fixo
+- [x] Manter compatibilidade dos pedidos existentes com a nova estrutura de taxas
+- [x] Criar relatório de margem por venda com subtotal, frete, comissão, taxas, valor líquido e margem percentual
+- [x] Detalhar frete, comissão e todas as taxas no PDF da venda
+- [x] Cobrir múltiplas taxas, margem e PDF com testes e validação visual
+- [x] Mapear os dados de vendedor e tipos de taxa disponíveis para os novos filtros de margem
+- [x] Somar as taxas adicionais ao valor final da venda e atualizar os demonstrativos correspondentes
+- [x] Adicionar filtros de vendedor e tipo de taxa ao relatório de margem por venda
+- [x] Permitir exportar o relatório de margem filtrado em PDF e Excel
+- [x] Cobrir cálculo, filtros e exportações de margem com testes e validação visual
+- [x] Mapear pedidos, títulos financeiros e campos disponíveis para o cadastro individual do cliente
+- [x] Criar consulta protegida do perfil do cliente com totais, títulos em aberto e histórico de pedidos
+- [x] Criar tela de cadastro do cliente acessível ao clicar no nome da lista de clientes
+- [x] Exibir últimos pedidos, valor total comprado, títulos em aberto e histórico comercial completo
+- [x] Cobrir o perfil do cliente com testes e validação visual da navegação
+- [x] Mapear a grade de medidas da venda e o padrão de romaneio usado na produção diária
+- [x] Fixar no romaneio de vendas os comprimentos de 2 m a 9 m em intervalos de 0,5 m
+- [x] Implementar navegação Tab por coluna de comprimento e por coluna de quantidade na grade de vendas
+- [x] Exibir no final do romaneio de vendas a quantidade de peças e a porcentagem da produção por bitola
+- [x] Cobrir a grade de vendas, atalhos Tab e resumo por bitola com testes e validação visual
+- [x] Mapear a tabela de itens e o cálculo reutilizável do resumo por bitola para o PDF de venda
+- [x] Incluir no PDF da venda o resumo de peças, volume e participação percentual por bitola
+- [x] Cobrir o resumo por bitola no PDF com testes, validação de paginação e revisão visual
+- [x] Mapear a validação das linhas e os atalhos atuais da grade do romaneio de vendas
+- [x] Confirmar e adicionar as medidas do romaneio ao pressionar Enter
+- [x] Aceitar linhas de comprimento sem quantidade de peças e ignorá-las no cálculo de itens
+- [x] Cobrir Enter e comprimentos sem quantidade com testes e validação visual
+- [x] Mapear a tabela de itens do PDF de vendas e a grade de peças do PDF de produção diária
+- [x] Substituir no PDF da venda a listagem de peças romaneadas por uma grade de medidas e comprimentos
+- [x] Preservar o resumo final de peças e percentual por bitola após a nova grade
+- [x] Cobrir a grade do PDF de vendas com testes de conteúdo, paginação e revisão visual
+- [x] Corrigir a página inicial vazia na exportação de PDF de vendas
+- [x] Organizar acerto comercial e resumo de peças na primeira página do PDF de venda
+- [x] Iniciar obrigatoriamente o romaneio em grade na segunda página do PDF de venda
+- [x] Cobrir e validar a nova paginação do PDF de vendas
+- [x] Pré-preencher e preservar a categoria financeira nos recebíveis criados a partir de vendas
+- [x] Exigir filtros para exibir lançamentos no Financeiro, com período, valor, cliente e categoria
+- [x] Abrir a edição do lançamento pelo clique na descrição e remover o botão de editar da lista
+- [x] Cobrir as melhorias de pesquisa e edição financeira com testes e validação visual
+- [x] Adicionar filtros rápidos de período para hoje, últimos 7 dias e este mês no Financeiro
+- [x] Exibir totais de contas a pagar e a receber calculados sobre os resultados da pesquisa financeira
+- [x] Cobrir os filtros rápidos e os totais filtrados com testes e validação visual
+- [x] Analisar e documentar o papel de Estoque e Inventário no fluxo operacional
+- [x] Verificar e corrigir a baixa de peças serradas vinculada à entrega de vendas
+- [x] Exibir quantidades de entrada, saída e saldo no estoque de peças serradas
+- [x] Cobrir a integração venda-estoque e os novos indicadores com testes e validação visual
+- [x] Manter todas as medidas de cada essência em uma única página do romaneio de venda
+- [x] Separar o romaneio de cada essência em sua própria página no PDF de vendas
+- [x] Reduzir margens laterais e ampliar a área útil horizontal das grades do romaneio
+- [x] Cobrir e validar visualmente a nova composição de páginas por essência
+- [x] Auditar vendas entregues sem baixa de estoque, sem alterar dados ou código
+- [x] Comparar itens vendidos, medidas persistidas e movimentações de saída para identificar a causa
+- [x] Apresentar o diagnóstico da baixa ausente e aguardar aprovação antes de corrigir
+- [x] Mapear os lotes e linhas sem vínculo físico relacionados ao reprocessamento das vendas VND-090001 e VND-120001
+- [x] Reprocessar as baixas das vendas VND-090001 e VND-120001 com rastreabilidade por lote
+- [x] Excluir somente artefatos de estoque confirmados sem peça física, entrada ou movimentação válida
+- [x] Padronizar a numeração sequencial futura dos romaneios de entrada, preservando os documentos históricos
+- [x] Padronizar a numeração sequencial futura das vendas, preservando os documentos históricos
+- [x] Cobrir o reprocessamento e as novas numerações com testes e validação visual
+- [x] Mapear bloqueios de edição e campos de cabeçalho dos romaneios de entrada e produção
+- [x] Permitir editar fornecedor, datas e frete de romaneios de entrada após uso das toras
+- [x] Permitir editar fornecedor e datas de romaneios de produção após consumo das toras
+- [x] Preservar plaquetas, peças, saldos e movimentações ao editar somente o cabeçalho
+- [x] Cobrir permissões de edição de cabeçalhos com testes e validação visual
+- [x] Mapear ocorrências e registros persistidos de `producao_estoque` e `producao`
+- [x] Padronizar autorização, convites e interface para usar exclusivamente o perfil `producao`
+- [x] Converter registros legados de perfil somente se forem encontrados no banco
+- [x] Cobrir o acesso de `producao` ao módulo permitido e a negação de privilégios indevidos
+- [x] Validar tipagem, testes e ausência de ocorrências funcionais de `producao_estoque`
+- [x] Auditar defaults, parâmetros opcionais e filtros de empresa em código de produção
+- [x] Mapear a fonte confiável de empresa ativa no contexto autenticado e nos routers
+- [x] Remover fallbacks operacionais de empresa 1 e tornar o escopo empresarial explícito
+- [x] Proteger leituras, criações, alterações e exclusões contra acesso cross-tenant
+- [x] Criar regressões para leitura, criação, alteração, exclusão e ausência de contexto empresarial
+- [x] Validar ausência de fallbacks perigosos, TypeScript e suíte completa
+- [x] Auditar sessão, empresaMembros, empresas, contexto tRPC e mecanismos existentes de empresa ativa
+- [x] Definir persistência segura da empresa ativa sem duplicar estruturas existentes
+- [x] Criar listagem de empresas do usuário e seleção validada por vínculo empresarial
+- [x] Propagar empresa ativa e perfil do vínculo ao contexto e às permissões
+- [x] Adicionar seletor de empresa no layout e invalidar dados após a troca
+- [x] Cobrir primeiro acesso, troca, negação de seleção indevida e limpeza de cache com testes
+- [x] Validar tipagem, isolamento e suíte completa sem reintroduzir fallback de empresa
+- [x] Mapear a criação e edição atual de contas a receber vinculadas a vendas aprovadas
+- [x] Modelar a condição de pagamento e recriar títulos a receber em parcelas rastreáveis
+- [x] Permitir informar vencimentos por dias ou por datas específicas para cada parcela
+- [x] Abrir o formulário de condição de pagamento ao clicar no cliente em Vendas Aprovadas
+- [x] Cobrir parcelamento, vencimentos e atualização da listagem com testes e validação visual
+- [x] Auditar o fluxo de sessão, cookies, autenticação, contexto e chamadas autenticadas
+- [x] Ajustar a política de cookies conforme a arquitetura de desenvolvimento e produção
+- [x] Cobrir cookies, logout, expiração e continuidade da empresa ativa com regressões
+- [x] Validar segurança da sessão, TypeScript e suíte completa sem alterar regras de negócio
+- [x] Inventariar e classificar ocorrências de any e casts perigosos em backend e frontend
+- [x] Eliminar any desnecessários no backend, priorizando dados financeiros e operações críticas
+- [x] Fortalecer tipos do frontend e pontos compartilhados sem alterar comportamento visual
+- [x] Documentar exceções justificadas, validar TypeScript e executar a suíte completa
+- [x] Mapear o cálculo atual de participação por bitola no PDF de Produção Diária
+- [x] Calcular percentuais de peças separadamente por essência produzida
+- [x] Separar e identificar no PDF o resumo de peças de cada essência
+- [x] Cobrir o cálculo multiespécie com testes, validar PDF e suíte completa
+- [x] Inventariar páginas, componentes, hooks, routers, assets, testes, scripts e dependências
+- [x] Comprovar referências de candidatos a código legado, incluindo Home.tsx
+- [x] Remover somente arquivos, imports e dependências comprovadamente mortos
+- [x] Validar TypeScript, build e suíte sem alteração de funcionalidades
+- [x] Registrar itens removidos e itens suspeitos mantidos por segurança
+- [x] Mapear integralmente exports, helpers, tipos, transações e dependências de server/db.ts
+- [x] Classificar funções por domínio e definir repositories sem dependências circulares
+- [x] Migrar implementações por domínio preservando APIs, transações e empresa ativa
+- [x] Reduzir server/db.ts à conexão e às reexportações de compatibilidade necessárias
+- [x] Validar imports, TypeScript, testes por domínio e suíte completa sem mudanças de negócio
+- [x] Mapear consultas e relacionamentos empresariais do fluxo de caixa e da previsão semanal
+- [x] Definir o escopo correto de configuracoesFinanceiras antes de alterar o acesso
+- [x] Encaminhar empresa ativa do router financeiro e filtrar todas as consultas relacionadas
+- [x] Criar regressões cross-tenant para fluxo de caixa, previsão e tentativa de manipulação de tenant
+- [x] Validar TypeScript, testes financeiros, autenticação, suíte integral e build sem alterar regras financeiras
+- [x] Mapear integralmente as dependências de empresa, empresaMembros, empresaAtiva e empresaId antes da migração single-tenant
+- [x] Inventariar empresas, vínculos e registros dependentes no banco para preservar dados reais e definir a empresa operacional única
+- [x] Definir estratégia de schema e migration reversível que remova a dependência operacional multiempresa sem apagar dados automaticamente
+- [x] Simplificar contexto, autorização tRPC, routers e repositories para autenticação e permissões baseadas diretamente no usuário
+- [x] Remover seletor, troca e gestão de múltiplas empresas da interface preservando nome e identidade da empresa existente
+- [x] Atualizar testes de sessão, permissões, produção, vendas, estoque e financeiro para o modelo single-tenant
+- [x] Validar migration, TypeScript, suíte, build e fluxos principais antes da publicação
+- [x] Avaliar perfis diretos ausentes e preservar a negação de acesso dos usuários sem vínculo empresarial ativo, sem elevar permissões automaticamente
+- [x] Mapear todas as criações e sincronizações atuais de títulos financeiros, suas origens e chamadas duplicadas
+- [x] Criar o motor financeiro central tipado para títulos automáticos com validação, origem, parcelas e idempotência
+- [x] Inventariar duplicidades existentes e aplicar uma proteção de banco compatível antes de depender de idempotência na aplicação
+- [x] Migrar os fluxos de orçamento, romaneio de entrada, diesel, folha, serragem e recorrências para o motor central sem alterar cálculos de negócio
+- [x] Remover criações diretas duplicadas de títulos em routers e módulos operacionais preservando edições e sincronizações permitidas
+- [x] Criar regressões de idempotência, parcelamento e origem para os títulos financeiros automáticos
+- [x] Validar TypeScript, testes, build e fluxos financeiros antes de publicar a primeira etapa
+- [x] Inventariar todas as inserções diretas e contratos de títulos financeiros por origem antes da centralização definitiva
+- [x] Criar adaptadores de domínio para venda, romaneio, diesel, serragem, folha, recorrência e lançamento manual sobre o Motor Financeiro
+- [x] Remover toda inserção direta em titulosFinanceiros fora do núcleo financeiro, preservando atualizações, vínculos e títulos manuais
+- [x] Validar idempotência de vendas parceladas, romaneios e sincronizações sem duplicar títulos ou alterar baixas existentes
+- [x] Adicionar regressões que comprovem o núcleo financeiro como único ponto de persistência automática
+- [x] Executar auditoria global, TypeScript, suíte e build antes de publicar a centralização definitiva
+- [x] Auditar a experiência atual do RH e manter documentadas as estruturas legadas que serão preservadas fora da navegação principal
+- [x] Reorganizar o RH como Funcionários, Adiantamentos e Fechamento, removendo folha, encargos e fichas genéricas da experiência principal
+- [x] Permitir criar funcionários pela nova tela e vinculá-los imediatamente aos adiantamentos da competência selecionada
+- [x] Calcular salário informado, total de adiantamentos ativos e saldo mensal por funcionário sem encargos, impostos ou parcelamento novo
+- [x] Permitir editar ou cancelar adiantamentos antes do fechamento, bloquear excessos por padrão e preservar todo o histórico existente
+- [x] Criar a visão de fechamento e a ação explícita de envio de saldos ao Financeiro pelo motor central, sem duplicar baixas ou conciliação
+- [x] Cobrir os fluxos simplificados de funcionário, adiantamento, competência, excesso, cancelamento e fechamento com regressões
+- [x] Validar TypeScript, suíte, build e experiência de RH simplificada antes da publicação
+- [x] Auditar todas as leituras e gravações de baixas, valorBaixado, saldo, juros, desconto e estado de títulos financeiros
+- [x] Definir uma única regra central para recalcular valor devido, baixas válidas, saldo e estado sem remover valorBaixado materializado
+- [x] Migrar criação de baixa, baixa parcial, estorno e cancelamento ao ciclo central sem alterar conciliação, transferências ou fluxo de caixa
+- [x] Proteger novas baixas contra valor superior ao saldo disponível, preservando a política de juros e descontos existente
+- [x] Assegurar que estorno apenas reverta baixas válidas e recalcule título, saldo e estado de forma idempotente
+- [x] Criar regressões para baixa total, parcial, múltiplas baixas, estorno, juros, descontos, cancelado, vencido e excesso de saldo
+- [x] Auditar dados e validações concorrentes antes de qualquer nova constraint e validar TypeScript, suíte e build antes de publicar
+- [x] Auditar campos, vínculos e bloqueios atuais das contas bancárias para preservar saldos, baixas e conciliações
+- [x] Permitir editar nome, banco, agência, conta e data de início da conta bancária pelo Financeiro
+- [x] Validar dados cadastrais e manter o histórico financeiro imutável durante a edição da conta
+- [x] Cobrir edição de conta bancária e preservação de movimentações com testes de regressão
+- [x] Validar TypeScript, suíte, build e interface da edição de contas bancárias antes de publicar
+- [x] Auditar contas, baixas, títulos, movimentos, fluxo de caixa e candidatos históricos a transferências sem alterar dados
+- [x] Modelar transferências internas e movimentos vinculados por origem e destino, sem criar títulos financeiros
+- [x] Validar contas distintas, contas ativas, valor positivo e a política atual de saldo negativo antes de confirmar transferências
+- [x] Registrar transferência em transação única, preservando saldo consolidado e excluindo-a de receitas, despesas e categorias
+- [x] Criar histórico bilateral por conta e permitir estorno único por operação inversa sem apagar registros
+- [x] Adaptar a interface financeira com criação, consulta e estorno de transferências claramente distintas de títulos
+- [x] Cobrir transferência, ausência de título, ausência de receita/despesa, saldo consolidado, validações, concorrência e estorno com regressões
+- [x] Validar banco, TypeScript, suíte, build e auditorias da Etapa 2B antes de publicar
+- [x] Auditar estruturas atuais de OFX, extratos, movimentos bancários, conciliação, baixas, contas e transferências sem alterar dados
+- [x] Modelar movimentos bancários imutáveis com FITID único por conta e estados não conciliado, conciliado ou ignorado
+- [x] Implementar importação OFX idempotente, preservando dados originais e impedindo baixas automáticas durante a importação
+- [x] Criar sugestão determinística e explicável de correspondência por valor, data, tipo, conta, descrição e transferências
+- [x] Permitir conciliar, conciliar com baixa quando necessário, ignorar e desfazer conciliação de modo transacional e auditável
+- [x] Reconhecer os dois lados de transferências internas e impedir que conciliação crie receita, despesa ou baixa duplicada
+- [x] Criar tela de conciliação com importação OFX, filtros, sugestões, revisão e histórico por conta
+- [x] Cobrir importação duplicada, FITID, matching, baixa única, baixa parcial, transferência, reversão e concorrência com regressões
+- [x] Validar banco, TypeScript, suíte, build, auditorias e interface da Etapa 2C antes de publicar
+- [x] Consolidar integralmente o escopo da Etapa 3 e auditar fontes atuais de saldos, títulos, baixas, transferências e extratos
+- [x] Definir regras puras para separar realizado, previsto, saldo atual e saldo projetado por conta e consolidado
+- [x] Implementar movimentos gerenciais por data de impacto sem duplicar baixas, títulos, transferências ou extratos conciliados
+- [x] Respeitar saldo em aberto de títulos parciais, títulos pagos e cancelados nas projeções
+- [x] Excluir transferências do consolidado e exibir seus efeitos apenas na visão individual de cada conta
+- [x] Criar filtros de período, conta e visão consolidada, incluindo intervalos rápidos e período personalizado
+- [x] Construir visão executiva, fluxo diário acumulado e detalhamento separado entre realizado e previsto
+- [x] Cobrir saldo inicial, parcialidade, cancelamentos, transferências, conta individual, consolidado e projeções com regressões
+- [x] Validar dados, TypeScript, suíte, build, auditoria e interface da Etapa 3 antes de publicar
+- [x] Ajustar o painel de movimentações do fluxo para eliminar rolagem horizontal e preservar a legibilidade dos dados
+- [x] Validar visualmente, testar e publicar o ajuste pontual do painel
+- [x] Ajustar o resumo por categoria e origem para eliminar rolagem horizontal e preservar a leitura dos valores
+- [x] Validar visualmente, testar e publicar o ajuste pontual do resumo por categoria
+- [x] Consolidar o escopo da Etapa 5 e auditar títulos, baixas, filtros, navegação e detalhe financeiro existentes
+- [x] Definir regras puras de saldo em aberto, status operacional, aging, prioridade e ordenação por tipo de título
+- [x] Implementar consultas operacionais de contas a receber e a pagar usando somente títulos e baixas existentes
+- [x] Garantir que cards, lista, aging e detalhamento usem o mesmo saldo em aberto conforme os filtros ativos
+- [x] Respeitar baixas parciais, títulos pagos e cancelados, sem duplicar valores ou criar estruturas paralelas
+- [x] Criar filtros por vencimento, status, parte relacionada, origem, categoria, conta financeira e faixa de valor
+- [x] Construir resumos, listas priorizadas, aging e detalhe do título com trilha de baixas e auditoria
+- [x] Cobrir totais, filtros, aging, parcialidade, cancelamentos, prioridade, ordenação e acesso com regressões
+- [x] Validar dados, TypeScript, suíte, build, auditoria e interface da Etapa 5 antes de publicar
+- [x] Reorganizar o cabeçalho do Fluxo de Caixa para alinhar título, filtros e atalhos de período
+- [x] Validar visualmente em desktop e mobile, testar e publicar o ajuste do cabeçalho do Fluxo de Caixa
+- [x] Auditar a implementação publicada da Etapa 5 contra a especificação reenviada e documentar lacunas comprovadas
+- [x] Corrigir somente as lacunas confirmadas, validar e publicar a revisão da Etapa 5
+- [x] Completar os indicadores operacionais com Total a vencer, Próximos 30 dias e percentual vencido, todos com drill-down
+- [x] Tornar a concentração por cliente ou fornecedor rastreável e distinguir prioridades de atraso por faixa de aging
+- [x] Ampliar as regressões da Etapa 5 para fronteiras de aging, parcelamento, baixa, estorno, conciliação e origem
+- [x] Ler integralmente a especificação da Etapa 6 e auditar romaneios, produção, estoque, vendas, despesas, diesel e fretes existentes
+- [x] Mapear entidades, dados e repositórios do fluxo entrada de tora → produção → estoque serrado → venda → título financeiro
+- [x] Diagnosticar a confiabilidade atual de custos, rendimentos, subprodutos e custos diretos sem alterar estruturas ou dados
+- [x] Apresentar o diagnóstico e aguardar validação das premissas antes de modelar ou implementar o custo real da madeira
+- [x] Reauditar integralmente a Etapa 6 revisada, preservando históricos e separando custo rastreável, industrial e comercial/administrativo
+- [x] Mapear o custo de matéria-prima por romaneio, plaqueta, tora consumida, romaneio de produção e lote serrado
+- [x] Diagnosticar a disponibilidade de dados para rateios mensais por m³ produzido e para margem por venda sem usar pagamentos como custo
+- [x] Apresentar e validar as novas premissas de centros de custo e rateios antes de criar tabelas, cálculos ou telas
+- [x] Incorporar a validação revisada: custo de matéria-prima pelo volume efetivamente produzido, sem custo artificial de aproveitamento
+- [x] Modelar bases de apropriação configuráveis por categoria, incluindo m³ produzido, m³ vendido, valor vendido, quantidade, carga, pedido e percentual sobre receita
+- [x] Separar custos estruturais rateados, custos diretos de venda e frete comercial sem misturar com frete de entrada
+- [x] Preservar a exclusão da produção de terceiros e a regra de custo parcial sem estimativas para origens ausentes
+- [x] Criar tabelas e migration não destrutiva para centros, categorias, lançamentos, rateios versionados e componentes de custo gerencial
+- [x] Implementar regras puras para matéria-prima rastreável, cobertura, bases configuráveis, custos diretos e preço sugerido
+- [x] Implementar repositórios e contratos tRPC com competência auditável, evidência opcional e sem alterar dados financeiros ou operacionais
+- [x] Construir as telas gerenciais de configuração, lançamentos, rateios, custos, margem, cobertura e simulação de preço
+- [x] Cobrir regressões de rastreabilidade, rateio, custos diretos, competência, cobertura, versionamento, venda histórica e acesso
+- [x] Validar migration, dados existentes, interface, TypeScript, suíte e build antes de publicar a Etapa 6
+- [x] Auditar sem alteração as plaquetas sem identificação, suas origens e as toras consumidas com volume cúbico incompleto
+- [x] Exibir a rastreabilidade da plaqueta no estoque e navegar para o romaneio ou documento que a originou
+- [x] Permitir selecionar, na produção, uma tora disponível sem plaqueta pela essência e medidas, consumindo o mesmo registro de estoque sem gerar nova identificação
+- [x] Disponibilizar correção auditável de volume para tora já consumida, preservando a cadeia de produção e estoque
+- [x] Cobrir regressões, validar a interface e publicar as correções de plaquetas e volume
+- [x] Auditar a sobreposição entre Margem por venda e Rentabilidade da madeira, comparando fontes, fórmulas e ações disponíveis
+- [x] Separar com clareza a margem comercial da rentabilidade por custo, ajustando nomenclatura, navegação e conteúdo quando necessário
+- [x] Atualizar regressões, validar visualmente e publicar o ajuste de navegação financeira
+- [x] Auditar o parser, modelo CSV e mensagens de validação da importação financeira para datas
+- [x] Aceitar datas DD/MM/AAAA na importação financeira sem ambiguidades e preservar a compatibilidade necessária
+- [x] Atualizar o modelo, as regressões e publicar o ajuste de formato brasileiro
+- [x] Auditar em leitura as fontes de custo de diesel, RH, frete, financeiro e vendas para a Etapa 6E
+- [x] Mapear origem, competência, critério de apropriação, limites e risco de dupla apropriação de cada fonte
+- [x] Documentar a proposta de integração auditável à Rentabilidade da Madeira sem implementar lançamentos automáticos
+- [x] Diagnosticar a arquitetura atual da Rentabilidade da Madeira, suas tabelas gerenciais e os vínculos possíveis com títulos financeiros
+- [x] Mapear uma migração segura para Centros de Custo financeiros, preservando históricos, importações, recorrências e origens automáticas
+- [x] Documentar as mudanças previstas de frontend e backend sem executar migration, apagar dados ou modificar a interface
+- [x] Aguardar aprovação explícita do diagnóstico revisado antes de implementar a simplificação da Etapa 6E
+- [x] Evoluir os Centros de Custo existentes com tipo, situação e compatibilidade preservada, e vincular centro aos títulos e recorrências por migration aditiva
+- [x] Propagar e validar Centros de Custo em lançamentos financeiros manuais, parcelados, importados, recorrentes, conciliados e editados em lote
+- [x] Configurar a classificação explícita das origens automáticas sem inferência por texto e sem duplicar diesel, matéria-prima, folha ou vendas
+- [x] Simplificar a interface de Centros de Custo e Rentabilidade, removendo o lançamento paralelo e exibindo custos por competência e centro
+- [x] Cobrir migration, históricos sem classificação, competências, origens, cálculos e interface com testes e revisão visual
+- [x] Atualizar a documentação operacional e publicar a simplificação aprovada da Etapa 6E
+- [x] Auditar em leitura a cadeia existente de romaneio de entrada, plaqueta, tora, consumo, produção, lote e estoque para a Etapa 6F
+- [x] Medir a cobertura histórica de custo rastreável de toras e frete de entrada por produção própria, sem estimar valores ausentes
+- [x] Documentar e apresentar proposta técnica de leitura da matéria-prima por produção e competência, aguardando aprovação antes de implementar
+- [x] Formalizar a estimativa auditável por essência para toras consumidas sem romaneio de entrada, sem alterar dados históricos
+- [x] Calcular matéria-prima pela tora consumida e frete de entrada, excluindo títulos de romaneio da rentabilidade para evitar dupla apropriação
+- [x] Expor custos rastreáveis, estimados e sem referência por produção e competência no contrato de rentabilidade
+- [x] Atualizar a tela de rentabilidade com cobertura, base da estimativa e detalhe de produção responsivo
+- [x] Cobrir cálculos, exclusões, estimativas, regressões e interface da Etapa 6F com testes e revisão visual
+- [x] Documentar e publicar a implementação aprovada da Etapa 6F sem reclassificar os históricos
+- [x] Auditar em leitura a separação atual entre matéria-prima, custos industriais e custos comerciais/administrativos na rentabilidade
+- [x] Medir em leitura a presença de estimativas, custos sem origem e possíveis duplicidades por título, produção, plaqueta e romaneio
+- [x] Documentar e apresentar a proposta de correção da consolidação e do custo por m³, aguardando confirmação antes de alterar regras
+- [x] Formalizar custo real prioritário, referência ponderada por essência e custo indisponível, incluindo frete real na referência
+- [x] Ajustar a lógica da matéria-prima para aplicar referência somente em exceções sem origem ou sem custo identificável
+- [x] Expor matéria-prima, industrial, comercial/administrativo e custo completo por m³ em campos separados
+- [x] Atualizar a tela de rentabilidade com cobertura por custo real, referência e indisponibilidade, incluindo a base e o período da referência
+- [x] Cobrir a hierarquia, a média ponderada com frete, a ausência de referência, a não duplicidade e a interface responsiva com testes
+- [x] Documentar e publicar a atualização aprovada sem reclassificar registros históricos
+- [x] Mapear a essência da produção e do consumo de toras para o detalhamento de rentabilidade por espécie
+- [x] Consolidar matéria-prima, volume produzido, cobertura e custo por m³ por essência sem duplicar consumos
+- [x] Expor o resumo por essência no contrato atual de rentabilidade por competência
+- [x] Criar na tela de Rentabilidade da Madeira uma visualização responsiva por essência com custo, volume, cobertura e custo por m³
+- [x] Cobrir cálculos multiespécie, ausência de custo, produção sem volume e interface com testes e validação visual
+- [x] Documentar e publicar o detalhamento por essência sem alterar registros históricos
+- [x] Auditar em leitura os vínculos existentes entre produção, lote, estoque, saída e item de venda
+- [x] Medir em leitura a cobertura de lote e volume nas vendas, incluindo vendas com múltiplos lotes
+- [x] Auditar os custos específicos de venda já registrados, como frete comercial, comissão, impostos e taxas
+- [x] Documentar e apresentar a proposta de rentabilidade por essência, lote e venda, aguardando confirmação antes de implementar
+- [x] Formalizar a receita líquida da venda como preço bruto menos frete comercial e comissão, com valor e preço líquido por m³
+- [x] Apurar por lote vendido o custo rastreável de matéria-prima e a parcela industrial por m³ da competência de produção
+- [x] Consolidar por venda as saídas líquidas, múltiplos lotes, custo de madeira, custo de produção e custos específicos distintos de frete e comissão
+- [x] Exibir a comparação entre preço líquido por m³ e custo total rastreável por venda, com cobertura parcial ou indisponível para origens físicas incompletas
+- [x] Cobrir receita líquida, múltiplos lotes, estornos, lacunas de rastreabilidade e apresentação responsiva com testes automatizados e validação visual
+- [x] Documentar e publicar a margem por venda, preservando os fluxos comerciais e financeiros existentes
+- [x] Investigar em leitura os motivos específicos de cobertura parcial ou indisponível nas vendas exibidas na rentabilidade
+- [x] Explicar a origem das lacunas e as alternativas seguras de regularização, sem alterar registros
+- [x] Definir a referência ponderada por essência aplicável exclusivamente a lotes históricos sem produção de origem
+- [x] Aplicar a estimativa identificada de matéria-prima e produção aos lotes históricos sem origem, sem substituir custos reais
+- [x] Exibir a origem estimada, o escopo da referência e a cobertura real versus estimada na margem por venda
+- [x] Cobrir referência histórica, ausência de referência, preservação de custo real e cobertura da margem com testes e validação visual
+- [x] Documentar e publicar a estimativa por média ponderada para lacunas históricas de lote
+- [x] Auditar valores por m³ de toras de Cedrinho e demais essências nos romaneios de carga elegíveis
+- [x] Substituir a referência baseada em consumo pela média ponderada dos romaneios de carga da mesma essência, sem frete
+- [x] Preservar custo real de origem e identificar claramente a estimativa de valor de tora por essência
+- [x] Validar a correção com custos de Cedrinho, ausência de referência, regressões e publicação documentada
+- [x] Comparar a implementação atual da Etapa 6 com a metodologia final de matéria-prima, industrial e comercial/administrativa
+- [x] Auditar em leitura a cobertura de toras, volumes, produção própria, produção de terceiros e custos por centro e competência
+- [x] Confrontar os resultados auditados com a tela de Rentabilidade da Madeira e registrar divergências sem alterar dados
+- [x] Elaborar o relatório final de validação da Etapa 6, incluindo qualquer regra conflitante que exija confirmação
+- [x] Incluir o frete do romaneio de carga de toras no custo real e na referência ponderada por essência
+- [x] Manter frete comercial de madeira serrada fora do custo da tora e explicitamente separado na margem da venda
+- [x] Validar a separação de fretes em testes, interface e documentação antes de publicar a regra confirmada
+- [x] Adicionar ao PDF do romaneio de carga o saldo total em m³ agrupado por essência
+- [x] Cobrir o resumo de volume por essência com testes e validação visual do PDF
+- [x] Auditar por que serviços de serragem não aparecem nos relatórios de contas a receber
+- [x] Corrigir a cobertura dos recebíveis de serragem sem criar duplicidades ou alterar lançamentos indevidamente
+- [x] Melhorar a usabilidade de contas a pagar, pagas, receber e recebidas com filtros, totais e leitura operacional
+- [x] Cobrir a correção de serragem e a nova interface financeira com testes e validação responsiva
+- [x] Revisar o briefing completo de redesign visual e mapear as telas, rotas e componentes existentes sem alterar regras de negócio
+- [x] Definir e aplicar um sistema visual corporativo próprio da FK Madeiras, com tipografia, cores, espaçamentos, estados e acessibilidade consistentes
+- [x] Redesenhar a estrutura global com sidebar agrupada e colapsável, header contextual, busca, alertas e identificação do usuário
+- [x] Reorganizar as experiências de Contas a Pagar, Pagas, a Receber e Recebidas, preservando os filtros e cálculos existentes
+- [x] Modernizar painel financeiro, fluxo de caixa, resultado gerencial, conciliação e relatórios sem alterar a lógica financeira
+- [x] Aplicar o padrão visual aos módulos reais de operação, comercial e gestão interna, sem criar páginas fictícias
+- [x] Validar responsividade, acessibilidade, fluxos críticos e regressões; atualizar os testes visuais e automatizados pertinentes
+- [x] Publicar o redesign visual aprovado e registrar a entrega
+- [x] Estabilizar o cenário de teste financeiro de pesquisa sequencial que excedeu o limite sob carga da suíte completa
+- [x] Corrigir a rota comercial inválida identificada na validação responsiva para que Vendas abra o módulo real
+- [x] Mapear o efeito de classificar em lote títulos de romaneio de carga como Matéria-prima na Rentabilidade da Madeira
+- [x] Permitir criar Centro de Custo contextual e aplicar Centro de Custo em lote aos lançamentos financeiros elegíveis
+- [x] Proteger a rentabilidade contra dupla apropriação ao classificar títulos originados de romaneio de carga
+- [x] Cobrir edição em lote, criação contextual, exclusões de origem e interface com testes e validação visual
+
+- [x] Preparar pacote executável local com Docker Compose, MySQL e configuração de ambiente sem alterar a versão publicada
+- [ ] Validar a inicialização local, migrations e conexão do servidor com o MySQL Docker
+- [ ] Executar restauração controlada de dump em homologação local e comparar contagens e saldos críticos
+- [ ] Concluir a desativação do fallback Manus somente após validar todos os utilizadores no login próprio
+
+- [x] Confirmar Docker Desktop, Compose, MySQL 8.4 saudável e acesso ao banco local no projeto fk-madeiras-frontend-main
+- [ ] Construir e iniciar o fk-madeiras-app sem importar dados reais
+- [x] Aplicar as migrations versionadas e validar o schema vazio do banco local
+- [ ] Fazer dump da origem atual e restaurá-lo somente numa base local de homologação
+
+- [x] Corrigir o pacote da versão atual para incluir docker/local/Dockerfile referenciado pelo Compose
+- [x] Validar que o Dockerfile e o Compose pertencem ao mesmo estado do projeto e não alteram o volume MySQL
+
+- [x] Auditar os 73 arquivos drizzle/*.sql, o journal e o schema antes de corrigir a cadeia de migrations
+- [x] Corrigir duplicidades e incompatibilidades da cadeia de migrations sem marcar migrations como executadas
+- [x] Validar todas as migrations em um MySQL 8.4 vazio e comparar o schema criado com drizzle/schema.ts
+- [x] Executar TypeScript e build após a correção da cadeia de migrations
+
+- [x] Executar o Compose isolado em MySQL 8.4 vazio e comprovar as 73 migrations em __drizzle_migrations antes de considerar a migração concluída
+- [x] Confirmar a comparação do schema criado com drizzle/schema.ts no banco vazio, sem usar fk-madeiras-mysql
+
+- [x] Auditar as migrations 50–73 contra o estado físico do banco local existente, sem escrever nele
+- [x] Comparar o journal real, o backup e o schema físico para identificar objetos já adiantados
+- [ ] Preparar uma reconciliação idempotente e testá-la apenas em cópia isolada do banco
+- [ ] Criar procedimento seguro para o primeiro administrador local após a reconciliação
+
+- [ ] Restaurar backup-fkmadeiras-atual.sql em homologação isolada com container, banco e volume próprios
+- [ ] Capturar baseline de estrutura, journal, contagens e hashes dos dados na homologação
+- [ ] Testar reconciliação das migrations pendentes somente na cópia restaurada
+- [ ] Tratar especificamente a migration ordinal 50 / arquivo 0049 sem editar o journal manualmente
+- [ ] Validar idempotência, schema final, journal coerente e preservação dos dados na homologação
+- [x] Documentar comandos, SQL, resultados e procedimento futuro para o banco real sem executá-lo
+
+- [x] Confirmar o contrato da migration 0049 e o comportamento do executor Drizzle diante de coluna pré-existente
+- [x] Comparar estratégias compatíveis com banco novo e backup parcialmente adiantado sem editar __drizzle_migrations
+- [x] Documentar a solução escolhida e aguardar aprovação explícita antes de alterar a migration 0049
+
+- [x] Aplicar a correção aprovada movendo a coluna para a migration 0048 e deixando a 0049 somente com a constraint UNIQUE
+- [x] Atualizar apenas os snapshots históricos necessários e confirmar que o _journal.json não mudou
+- [x] Preparar comandos PowerShell equivalentes para restaurar, migrar e testar idempotência na homologação
+- [ ] Validar 73 migrations, 86 tabelas, 9 tabelas essenciais e segunda execução sem alterações

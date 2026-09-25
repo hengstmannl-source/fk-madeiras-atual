@@ -1,0 +1,13 @@
+﻿services:
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/production/Dockerfile
+    container_name: fk-madeiras-app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      PUBLIC_BASE_URL: https://fkmadeiras.com.br
+    ports:
+      - "127.0.0.1:3000:3000"

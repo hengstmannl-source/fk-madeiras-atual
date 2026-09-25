@@ -1,0 +1,42 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: fk-madeiras-mysql
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: fkmadeiras
+      MYSQL_USER: fk_madeiras
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina MYSQL_PASSWORD no .env.docker}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina MYSQL_ROOT_PASSWORD no .env.docker}
+    ports:
+      - "3307:3306"
+    volumes:
+      - fk_madeiras_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/local/Dockerfile
+    container_name: fk-madeiras-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PUBLIC_BASE_URL: http://localhost:3000
+      PORT: 3000
+      DATABASE_URL: mysql://fk_madeiras:${MYSQL_PASSWORD}@mysql:3306/fkmadeiras
+    ports:
+      - "3000:3000"
+
+volumes:
+  fk_madeiras_mysql:

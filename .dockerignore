@@ -1,0 +1,34 @@
+﻿node_modules
+dist
+.git
+.gitignore
+*.log
+.env*
+
+# Production secrets and local-only administration scripts
+bootstrap-admin.cjs
+bootstrap-admin.ts
+scripts/auditar-banco-real.sh
+scripts/auditar_migrations.py
+scripts/auditar_migrations_detalhado.py
+scripts/auditar_reconciliacao_migrations.py
+scripts/executar-auditoria.cmd
+scripts/gerar_auditoria_banco_real.py
+scripts/gerar_relatorio_reconciliacao.py
+scripts/restaurar-homologacao.sh
+
+# Local database backups only; keep drizzle migration SQL in the build context
+backup-*.sql
+backup-*.sql.gz
+fk-madeiras-*.sql
+fk-madeiras-*.sql.gz
+*.sqlite
+*.sqlite3
+
+# Local artifacts and audit exports
+artifacts/
+auditoria-*.txt
+estrutura-*.txt
+docs/evidencias-auditoria-banco-real.txt
+docs/relatorio-reconciliacao-banco-real.md
+docs/auditoria-reconciliacao-banco-real.md
