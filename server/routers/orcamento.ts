@@ -96,13 +96,14 @@ const ComponenteProdutoSchema = z.object({
   comprimento: z.string().trim().max(30).nullable().optional(),
   quantidade: z.number().int().positive("Informe a quantidade da peça"),
 });
-const ProdutoComercialSchema = z.object({
+const ProdutoComercialBaseSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome do produto").max(200),
   tipoComercializacao: z.enum(["unidade", "pacote"]),
   precoPadrao: z.union([z.string(), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number(valor) >= 0, "Informe um preço válido"),
   observacoes: z.string().trim().max(4000).nullable().optional(),
   componentes: z.array(ComponenteProdutoSchema).max(60).default([]),
-}).superRefine((produto, ctx) => {
+});
+const ProdutoComercialSchema = ProdutoComercialBaseSchema.superRefine((produto, ctx) => {
   if (produto.tipoComercializacao === "pacote" && produto.componentes.length === 0) {
     ctx.addIssue({ code: "custom", path: ["componentes"], message: "Informe ao menos uma peça que compõe o pacote" });
   }
@@ -134,7 +135,7 @@ export const orcamentoRouter = router({
         criadoPor: ctx.user.id,
       }, input.componentes)
     )),
-    update: protectedProcedure.input(ProdutoComercialSchema.partial().extend({
+    update: protectedProcedure.input(ProdutoComercialBaseSchema.partial().extend({
       id: z.number().int().positive(),
       componentes: z.array(ComponenteProdutoSchema).max(60).optional(),
     })).mutation(({ ctx, input }) => {
