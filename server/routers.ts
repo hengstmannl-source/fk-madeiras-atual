@@ -20,18 +20,19 @@ import { producaoRouter } from "./routers/producao";
 import { dieselRouter } from "./routers/diesel";
 import { rhRouter } from "./routers/rh";
 import { custosGerenciaisRouter } from "./routers/custosGerenciais";
+import { publicUser } from "./_core/publicUser";
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => publicUser(opts.ctx.user)),
     contexto: protectedProcedure.query(async ({ ctx }) => ({
-      usuario: ctx.user,
+      usuario: publicUser(ctx.user),
       empresa: ctx.configuracaoEmpresa,
       papel: ctx.user.papel,
     })),
     entrar: publicProcedure
-      .input(z.object({ email: z.string().email(), senha: z.string().min(1).max(200) }))
+      .input(z.object({ email: z.string().trim().email().max(320), senha: z.string().min(1).max(200) }))
       .mutation(async ({ ctx, input }) => {
         const emailNormalizado = normalizarEmail(input.email);
         const acesso = await db.getCredencialPorEmail(emailNormalizado);

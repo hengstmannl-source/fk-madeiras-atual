@@ -9,10 +9,10 @@ export const madeiraRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      nome: z.string().min(1, "Nome é obrigatório"),
-      descricao: z.string().optional(),
-      precoM3: z.string().min(1, "Preço é obrigatório"),
-      unidadeMedida: z.string().default("m³"),
+      nome: z.string().max(300).min(1, "Nome é obrigatório"),
+      descricao: z.string().max(4000).optional(),
+      precoM3: z.string().max(40).min(1, "Preço é obrigatório"),
+      unidadeMedida: z.string().max(4000).default("m³"),
     }))
     .mutation(async ({ ctx, input }) => {
       const empresaId = (await db.getEmpresaUnica()).id;
@@ -26,11 +26,11 @@ export const madeiraRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      nome: z.string().min(1),
-      descricao: z.string().optional(),
-      precoM3: z.string(),
-      unidadeMedida: z.string().optional(),
+      id: z.number().int().positive(),
+      nome: z.string().max(300).min(1),
+      descricao: z.string().max(4000).optional(),
+      precoM3: z.string().max(40),
+      unidadeMedida: z.string().max(4000).optional(),
     }))
     .mutation(async ({ input }) => {
       await db.updateMadeira(input.id, {
@@ -43,7 +43,7 @@ export const madeiraRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       await db.deleteMadeira(input.id);
       return { success: true };

@@ -1,3 +1,4 @@
+import { dataCalendarioValida } from "../../shared/validacaoData";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -21,11 +22,11 @@ import {
 } from "../rh.simplificado.logic";
 
 const idSchema = z.number().int().positive();
-const competenciaSchema = z.string().regex(/^\d{4}-\d{2}$/, "Informe uma competência válida");
-const dataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida");
-const valorPositivoSchema = z.union([z.string(), z.number()])
+const competenciaSchema = z.string().max(4000).regex(/^\d{4}-\d{2}$/, "Informe uma competência válida");
+const dataSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
+const valorPositivoSchema = z.union([z.string().max(4000), z.number()])
   .transform((valor) => String(valor).replace(",", "."))
-  .refine((valor) => Number.isFinite(Number(valor)) && Number(valor) > 0, "Informe um valor positivo");
+  .refine((valor) => Number.isFinite(Number(valor)) && Number.isFinite(Number(valor)) && Number(valor) > 0, "Informe um valor positivo");
 
 function dataLocal(valor: string) {
   const [ano, mes, dia] = valor.split("-").map(Number);
@@ -81,7 +82,7 @@ async function garantirCategoriaPagamentos(db: Awaited<ReturnType<typeof bancoOb
 
 async function carregarResumo(db: Awaited<ReturnType<typeof bancoObrigatorio>>, empresaId: number, competencia: Date) {
   const [colaboradores, adiantamentos, departamentos, cargos, registroCompetencia] = await Promise.all([
-    db.select().from(colaboradoresRh).where(eq(colaboradoresRh.empresaId, empresaId)).orderBy(asc(colaboradoresRh.nome)),
+    db.select({ id: colaboradoresRh.id, nome: colaboradoresRh.nome, salarioAtual: colaboradoresRh.salarioAtual, situacao: colaboradoresRh.situacao, departamentoId: colaboradoresRh.departamentoId, cargoId: colaboradoresRh.cargoId }).from(colaboradoresRh).where(eq(colaboradoresRh.empresaId, empresaId)).orderBy(asc(colaboradoresRh.nome)),
     db.select().from(adiantamentosRh).where(and(
       eq(adiantamentosRh.empresaId, empresaId),
       eq(adiantamentosRh.competencia, competencia),
@@ -172,7 +173,7 @@ export const controleRhSimplificado = router({
       const limite = validarLimiteAdiantamentoRhSimplificado({ salario: colaborador.salarioAtual, totalExistente: existentes.filter((item) => item.id !== input.id).reduce((total, item) => total + Number(item.valor), 0), valorNovo: input.valor });
       const administrador = ctx.user.papel === "administrador" || ctx.user.papel === "proprietario";
       if (limite.excede && (!input.permitirExcesso || !administrador)) throw new TRPCError({ code: "BAD_REQUEST", message: "O total de adiantamentos ultrapassa o salário informado para esta competência." });
-      await db.update(adiantamentosRh).set({ colaboradorId: input.colaboradorId, competencia, dataAdiantamento: dataLocal(input.dataAdiantamento), valor: decimal(input.valor), saldoPendente: decimal(input.valor), observacoes: textoNulo(input.observacoes) }).where(eq(adiantamentosRh.id, input.id));
+      await db.update(adiantamentosRh).set({ colaboradorId: input.colaboradorId, competencia, dataAdiantamento: dataLocal(input.dataAdiantamento), valor: decimal(input.valor), saldoPendente: decimal(input.valor), observacoes: textoNulo(input.observacoes) }).where(and(eq(adiantamentosRh.id, input.id), eq(adiantamentosRh.empresaId, empresaId)));
       await auditar(empresaId, ctx.user.id, "adiantamento", input.id, "atualizado_controle_simples", { competencia: input.competencia, valor: input.valor, excessoAutorizado: limite.excede });
       return { success: true };
     }),
@@ -184,7 +185,7 @@ export const controleRhSimplificado = router({
       if (atual.estado === "cancelado") return { success: true, jaCancelado: true };
       if (atual.tituloFinanceiroId) throw new TRPCError({ code: "CONFLICT", message: "Este adiantamento possui vínculo financeiro histórico e não pode ser cancelado por este controle." });
       await competenciaAberta(db, empresaId, atual.competencia);
-      await db.update(adiantamentosRh).set({ estado: "cancelado", saldoPendente: "0" }).where(eq(adiantamentosRh.id, input.id));
+      await db.update(adiantamentosRh).set({ estado: "cancelado", saldoPendente: "0" }).where(and(eq(adiantamentosRh.id, input.id), eq(adiantamentosRh.empresaId, empresaId)));
       await auditar(empresaId, ctx.user.id, "adiantamento", input.id, "cancelado_controle_simples", { motivo: input.motivo });
       return { success: true, jaCancelado: false };
     }),
@@ -225,7 +226,7 @@ export const controleRhSimplificado = router({
       }
       await db.update(adiantamentosRh).set({ estado: "descontado", saldoPendente: "0" }).where(and(eq(adiantamentosRh.empresaId, empresaId), eq(adiantamentosRh.competencia, competencia), eq(adiantamentosRh.estado, "aberto")));
       if (existente) {
-        await db.update(competenciasFinanceirasRh).set({ estado: "fechada", fechadaEm: new Date(), fechadaPor: ctx.user.id }).where(eq(competenciasFinanceirasRh.id, existente.id));
+        await db.update(competenciasFinanceirasRh).set({ estado: "fechada", fechadaEm: new Date(), fechadaPor: ctx.user.id }).where(and(eq(competenciasFinanceirasRh.id, existente.id), eq(competenciasFinanceirasRh.empresaId, empresaId)));
       } else {
         await db.insert(competenciasFinanceirasRh).values({ empresaId, competencia, estado: "fechada", fechadaEm: new Date(), fechadaPor: ctx.user.id, criadoPor: ctx.user.id });
       }

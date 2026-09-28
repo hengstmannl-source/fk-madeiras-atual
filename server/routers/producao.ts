@@ -1,10 +1,11 @@
+import { dataCalendarioValida } from "../../shared/validacaoData";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 
-const DataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida");
-const DecimalPositivo = z.union([z.string(), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number(valor) > 0, "Informe um valor positivo");
-const DecimalNaoNegativo = z.union([z.string(), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number(valor) >= 0, "Informe um valor válido");
+const DataSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
+const DecimalPositivo = z.union([z.string().max(4000), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number.isFinite(Number(valor)) && Number(valor) > 0, "Informe um valor positivo");
+const DecimalNaoNegativo = z.union([z.string().max(4000), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number.isFinite(Number(valor)) && Number(valor) >= 0, "Informe um valor válido");
 
 function dataLocal(data: string): Date {
   const [ano, mes, dia] = data.split("-").map(Number);
@@ -121,12 +122,12 @@ const ToraEntradaRomaneioSchema = z.object({
 }).refine((entrada) => Boolean(entrada.plaquetaId) !== Boolean(entrada.novaPlaqueta), "Informe uma plaqueta disponível ou um novo código para entrada imediata");
 
 const RomaneioSchema = z.object({
-  toras: z.array(ToraEntradaRomaneioSchema).min(1, "Informe ao menos uma plaqueta serrada"),
+  toras: z.array(ToraEntradaRomaneioSchema).max(2000).min(1, "Informe ao menos uma plaqueta serrada"),
   dataProducao: DataSchema,
   fita: z.string().trim().max(100).nullable().optional(),
   responsavel: z.string().trim().max(200).nullable().optional(),
   observacoes: z.string().max(4000).nullable().optional(),
-  itens: z.array(ItemRomaneioSchema).min(1, "Adicione ao menos uma peça produzida"),
+  itens: z.array(ItemRomaneioSchema).max(2000).min(1, "Adicione ao menos uma peça produzida"),
   aproveitamentos: z.array(AproveitamentoRomaneioSchema).max(50).default([]),
   incluirAproveitamentoNoRendimento: z.boolean().default(false),
 });
@@ -170,7 +171,7 @@ const RetiradaSerragemTerceirosSchema = z.object({
   dataRetirada: DataSchema,
   responsavel: z.string().trim().max(200).nullable().optional(),
   observacoes: z.string().max(4000).nullable().optional(),
-  itens: z.array(z.object({ loteId: z.number().int().positive(), quantidade: z.number().int().positive() })).min(1, "Selecione ao menos uma peça para retirada"),
+  itens: z.array(z.object({ loteId: z.number().int().positive(), quantidade: z.number().int().positive() })).max(2000).min(1, "Selecione ao menos uma peça para retirada"),
 });
 
 export const producaoRouter = router({

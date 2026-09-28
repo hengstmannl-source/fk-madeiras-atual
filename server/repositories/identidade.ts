@@ -103,10 +103,13 @@ export async function getCredencialPorEmail(emailNormalizado: string) {
 export async function registrarFalhaAutenticacao(credencialId: number, bloqueadoAte: Date | null) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db
-    .update(credenciaisUsuarios)
-    .set({ tentativasFalhas: sql`${credenciaisUsuarios.tentativasFalhas} + 1`, bloqueadoAte })
-    .where(eq(credenciaisUsuarios.id, credencialId));
+  // MySQL evaluates single-table assignments left to right. Keep this order explicit;
+  // Drizzle .set() emits schema order, which would increment before checking the threshold.
+  await db.execute(sql`update ${credenciaisUsuarios}
+    set ${credenciaisUsuarios.bloqueadoAte} = CASE WHEN ${credenciaisUsuarios.tentativasFalhas} + 1 >= 5
+      THEN DATE_ADD(NOW(), INTERVAL 15 MINUTE) ELSE ${bloqueadoAte} END,
+      ${credenciaisUsuarios.tentativasFalhas} = ${credenciaisUsuarios.tentativasFalhas} + 1
+    where ${credenciaisUsuarios.id} = ${credencialId}`);
 }
 
 export async function limparFalhasAutenticacao(credencialId: number) {
@@ -119,7 +122,7 @@ export async function limparFalhasAutenticacao(credencialId: number) {
 export async function listarUsuariosDoSistema() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users).where(isNotNull(users.papel)).orderBy(asc(users.name));
+  return db.select({ id: users.id, name: users.name, email: users.email, papel: users.papel, role: users.role }).from(users).where(isNotNull(users.papel)).orderBy(asc(users.name));
 }
 
 export async function criarConviteEmpresa(data: {
@@ -137,13 +140,14 @@ export async function criarConviteEmpresa(data: {
 }
 
 export async function getConviteValidoPorHash(tokenHash: string) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
     .select({ convite: convitesEmpresa, empresa: empresas })
     .from(convitesEmpresa)
     .innerJoin(empresas, eq(empresas.id, convitesEmpresa.empresaId))
-    .where(eq(convitesEmpresa.tokenHash, tokenHash))
+    .where(and(eq(convitesEmpresa.tokenHash, tokenHash), eq(convitesEmpresa.empresaId, empresaId)))
     .limit(1);
   const encontrado = result[0];
   if (!encontrado || encontrado.convite.aceitoEm || encontrado.convite.canceladoEm || encontrado.convite.expiraEm <= new Date() || !encontrado.empresa.ativa) return undefined;
@@ -156,13 +160,14 @@ export async function aceitarConviteCriandoUsuario(data: {
   senhaHash: string;
   openId: string;
 }) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async tx => {
     const resultadoConvite = await tx
       .select()
       .from(convitesEmpresa)
-      .where(eq(convitesEmpresa.tokenHash, data.tokenHash))
+      .where(and(eq(convitesEmpresa.tokenHash, data.tokenHash), eq(convitesEmpresa.empresaId, empresaId)))
       .limit(1);
     const convite = resultadoConvite[0];
     if (!convite || convite.aceitoEm || convite.canceladoEm || convite.expiraEm <= new Date()) {
@@ -193,7 +198,7 @@ export async function aceitarConviteCriandoUsuario(data: {
       emailNormalizado: convite.emailNormalizado,
       senhaHash: data.senhaHash,
     });
-    await tx.update(convitesEmpresa).set({ aceitoEm: new Date(), aceitoPor: usuarioId }).where(eq(convitesEmpresa.id, convite.id));
+    await tx.update(convitesEmpresa).set({ aceitoEm: new Date(), aceitoPor: usuarioId }).where(and(eq(convitesEmpresa.id, convite.id), eq(convitesEmpresa.empresaId, empresaId)));
     return { usuarioId };
   });
 }

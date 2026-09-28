@@ -2,6 +2,7 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { validarReferenciasEmpresa } from "../repositories/referencias";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -62,6 +63,10 @@ const requireUser = t.middleware(async opts => {
     tipo: opts.type,
   });
   if (bloqueioPorPerfil) throw new TRPCError({ code: "FORBIDDEN", message: bloqueioPorPerfil });
+
+  if (opts.type === "mutation") {
+    await validarReferenciasEmpresa(await opts.getRawInput(), ctx.configuracaoEmpresa.id, opts.path);
+  }
 
   return next({
     ctx: {

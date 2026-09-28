@@ -1,3 +1,4 @@
+import { dataCalendarioValida } from "../../shared/validacaoData";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -22,7 +23,7 @@ import { garantirTituloFinanceiroAutomatico } from "../repositories/financeiro";
 
 const rhProcedure = protectedProcedure;
 const idSchema = z.number().int().positive();
-const dataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida");
+const dataSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
 
 function numero(valor: unknown) { return Number(valor ?? 0); }
 function decimal(valor: number | string) { return Number(valor).toFixed(2); }
@@ -51,7 +52,7 @@ async function regrasDaCompetencia(empresaId: number, competencia: Date) {
   const vigentes = tabelas.filter((tabela) => tabela.ativo && tabela.vigenciaInicio <= competencia && (!tabela.vigenciaFim || tabela.vigenciaFim >= competencia));
   const ids = vigentes.map((tabela) => tabela.id);
   const [faixas, reducoes] = await Promise.all([
-    ids.length ? db.select().from(faixasTributariasRh).where(inArray(faixasTributariasRh.tabelaTributariaId, ids)).orderBy(asc(faixasTributariasRh.limiteInferior)) : Promise.resolve([]),
+    ids.length ? db.select().from(faixasTributariasRh).where(and(inArray(faixasTributariasRh.tabelaTributariaId, ids), eq(faixasTributariasRh.empresaId, empresaId))).orderBy(asc(faixasTributariasRh.limiteInferior)) : Promise.resolve([]),
     ids.length ? db.select().from(regrasReducaoIrrfRh).where(and(eq(regrasReducaoIrrfRh.empresaId, empresaId), inArray(regrasReducaoIrrfRh.tabelaTributariaId, ids))).orderBy(asc(regrasReducaoIrrfRh.ordem)) : Promise.resolve([]),
   ]);
   const tabela = (tipo: "inss" | "irrf" | "fgts") => vigentes.filter((item) => item.tipo === tipo).sort((a, b) => b.vigenciaInicio.getTime() - a.vigenciaInicio.getTime())[0];
@@ -110,7 +111,7 @@ export const folhaParcelada = {
     for (const item of itens) {
       const eventosDoItem: EventoCalculoFolhaRh[] = eventos.filter((evento) => evento.itemFolhaId === item.id).map((evento) => ({ descricao: evento.descricao, tipo: evento.tipo, valor: numero(evento.valor), eventoId: evento.eventoId ?? undefined, incideInss: evento.incideInss, incideIrrf: evento.incideIrrf, deduzIrrf: evento.deduzIrrf, incideFgts: evento.incideFgts }));
       const calculo = calcularFolhaColaboradorRh({ salarioBase: numero(item.salarioBase), quantidadeDependentesIrrf: dependentes.filter((dependente) => dependente.colaboradorId === item.colaboradorId).length, adiantamentos: descontos.get(item.colaboradorId) ?? 0, eventos: eventosDoItem, regras: regrasVigentes });
-      await db.update(itensFolhaPagamentoRh).set({ totalProventos: decimal(calculo.totalProventos), inss: decimal(calculo.inss), baseIrrf: decimal(calculo.baseIrrf), irrf: decimal(calculo.irrf), deducoesLegaisIrrf: decimal(calculo.deducoesLegaisIrrf), descontoSimplificadoIrrf: decimal(calculo.descontoSimplificadoIrrf), metodoDeducaoIrrf: calculo.metodoDeducaoIrrf, tabelaIrrfId: calculo.tabelaIrrfId, memoriaIrrf: JSON.stringify(calculo.memoriaIrrf), adiantamentos: decimal(calculo.adiantamentos), outrosDescontos: decimal(calculo.outrosDescontos), totalDescontos: decimal(calculo.totalDescontos), salarioLiquido: decimal(calculo.salarioLiquido), fgts: decimal(calculo.fgts), custoEmpresa: decimal(calculo.custoEmpresa) }).where(eq(itensFolhaPagamentoRh.id, item.id));
+      await db.update(itensFolhaPagamentoRh).set({ totalProventos: decimal(calculo.totalProventos), inss: decimal(calculo.inss), baseIrrf: decimal(calculo.baseIrrf), irrf: decimal(calculo.irrf), deducoesLegaisIrrf: decimal(calculo.deducoesLegaisIrrf), descontoSimplificadoIrrf: decimal(calculo.descontoSimplificadoIrrf), metodoDeducaoIrrf: calculo.metodoDeducaoIrrf, tabelaIrrfId: calculo.tabelaIrrfId, memoriaIrrf: JSON.stringify(calculo.memoriaIrrf), adiantamentos: decimal(calculo.adiantamentos), outrosDescontos: decimal(calculo.outrosDescontos), totalDescontos: decimal(calculo.totalDescontos), salarioLiquido: decimal(calculo.salarioLiquido), fgts: decimal(calculo.fgts), custoEmpresa: decimal(calculo.custoEmpresa) }).where(and(eq(itensFolhaPagamentoRh.id, item.id), eq(itensFolhaPagamentoRh.empresaId, empresaId)));
     }
     return { success: true };
   }),
@@ -142,8 +143,8 @@ export const folhaParcelada = {
         criadoPor: ctx.user.id,
         database: db,
       });
-      if (titulo.titulo?.estado === "cancelado") await db.update(titulosFinanceiros).set({ estado: "aberto", canceladoEm: null, canceladoPor: null, valorOriginal: item.salarioLiquido, dataVencimento: dataLocal(input.dataVencimento) }).where(eq(titulosFinanceiros.id, titulo.id));
-      await db.update(itensFolhaPagamentoRh).set({ tituloFinanceiroId: titulo.id }).where(eq(itensFolhaPagamentoRh.id, item.id));
+      if (titulo.titulo?.estado === "cancelado") await db.update(titulosFinanceiros).set({ estado: "aberto", canceladoEm: null, canceladoPor: null, valorOriginal: item.salarioLiquido, dataVencimento: dataLocal(input.dataVencimento) }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
+      await db.update(itensFolhaPagamentoRh).set({ tituloFinanceiroId: titulo.id }).where(and(eq(itensFolhaPagamentoRh.id, item.id), eq(itensFolhaPagamentoRh.empresaId, empresaId)));
     }
     const valorEncargos = itens.reduce((soma, item) => soma + numero(item.fgts) + numero(item.inss) + numero(item.irrf), 0);
     let tituloEncargosId: number | null = null;
@@ -163,20 +164,20 @@ export const folhaParcelada = {
         database: db,
       });
       tituloEncargosId = titulo.id;
-      if (titulo.titulo?.estado === "cancelado") await db.update(titulosFinanceiros).set({ estado: "aberto", canceladoEm: null, canceladoPor: null, valorOriginal: decimal(valorEncargos), dataVencimento: dataLocal(input.dataVencimento) }).where(eq(titulosFinanceiros.id, titulo.id));
+      if (titulo.titulo?.estado === "cancelado") await db.update(titulosFinanceiros).set({ estado: "aberto", canceladoEm: null, canceladoPor: null, valorOriginal: decimal(valorEncargos), dataVencimento: dataLocal(input.dataVencimento) }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
     }
     const adiantamentos = await db.select().from(adiantamentosRh).where(and(eq(adiantamentosRh.empresaId, empresaId), eq(adiantamentosRh.estado, "aberto")));
     const planos = await planosDosAdiantamentos(db, empresaId, adiantamentos.map((adiantamento) => adiantamento.id));
     const parcelasDaCompetencia = planos.filter((parcela) => parcela.estado === "pendente" && parcela.competencia.getTime() === folha[0].competencia.getTime());
-    for (const parcela of parcelasDaCompetencia) await db.update(parcelasAdiantamentosRh).set({ estado: "descontada", folhaId: input.folhaId }).where(eq(parcelasAdiantamentosRh.id, parcela.id));
+    for (const parcela of parcelasDaCompetencia) await db.update(parcelasAdiantamentosRh).set({ estado: "descontada", folhaId: input.folhaId }).where(and(eq(parcelasAdiantamentosRh.id, parcela.id), eq(parcelasAdiantamentosRh.empresaId, empresaId)));
     const adiantamentosParcelados = Array.from(new Set(parcelasDaCompetencia.map((parcela) => parcela.adiantamentoId)));
     for (const adiantamentoId of adiantamentosParcelados) {
       const planoAtualizado = planos.filter((parcela) => parcela.adiantamentoId === adiantamentoId).map((parcela) => parcelasDaCompetencia.some((baixada) => baixada.id === parcela.id) ? { ...parcela, estado: "descontada" } : parcela);
       const situacao = situacaoAposBaixaParcelas(planoAtualizado);
-      await db.update(adiantamentosRh).set(situacao).where(eq(adiantamentosRh.id, adiantamentoId));
+      await db.update(adiantamentosRh).set(situacao).where(and(eq(adiantamentosRh.id, adiantamentoId), eq(adiantamentosRh.empresaId, empresaId)));
     }
-    for (const adiantamento of adiantamentos.filter((item) => !planos.some((parcela) => parcela.adiantamentoId === item.id) && item.competencia.getTime() === folha[0].competencia.getTime())) await db.update(adiantamentosRh).set({ saldoPendente: "0", estado: "descontado" }).where(eq(adiantamentosRh.id, adiantamento.id));
-    await db.update(folhasPagamentoRh).set({ estado: "fechada", fechadaEm: new Date(), fechadaPor: ctx.user.id, tituloEncargosFinanceiroId: tituloEncargosId }).where(eq(folhasPagamentoRh.id, input.folhaId));
+    for (const adiantamento of adiantamentos.filter((item) => !planos.some((parcela) => parcela.adiantamentoId === item.id) && item.competencia.getTime() === folha[0].competencia.getTime())) await db.update(adiantamentosRh).set({ saldoPendente: "0", estado: "descontado" }).where(and(eq(adiantamentosRh.id, adiantamento.id), eq(adiantamentosRh.empresaId, empresaId)));
+    await db.update(folhasPagamentoRh).set({ estado: "fechada", fechadaEm: new Date(), fechadaPor: ctx.user.id, tituloEncargosFinanceiroId: tituloEncargosId }).where(and(eq(folhasPagamentoRh.id, input.folhaId), eq(folhasPagamentoRh.empresaId, empresaId)));
     return { success: true, jaFechada: false };
   }),
   reabrir: rhProcedure.input(z.object({ folhaId: idSchema, motivo: z.string().trim().min(5).max(2000) })).mutation(async ({ ctx, input }) => {
@@ -184,25 +185,25 @@ export const folhaParcelada = {
     const folha = await db.select().from(folhasPagamentoRh).where(and(eq(folhasPagamentoRh.id, input.folhaId), eq(folhasPagamentoRh.empresaId, empresaId))).limit(1);
     if (!folha[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Folha não encontrada." });
     if (folha[0].estado !== "fechada") throw new TRPCError({ code: "BAD_REQUEST", message: "A folha já está aberta." });
-    const itens = await db.select().from(itensFolhaPagamentoRh).where(eq(itensFolhaPagamentoRh.folhaId, input.folhaId));
+    const itens = await db.select().from(itensFolhaPagamentoRh).where(and(eq(itensFolhaPagamentoRh.folhaId, input.folhaId), eq(itensFolhaPagamentoRh.empresaId, empresaId)));
     let tituloEncargosId = folha[0].tituloEncargosFinanceiroId;
     if (!tituloEncargosId) tituloEncargosId = (await db.select().from(titulosFinanceiros).where(and(eq(titulosFinanceiros.empresaId, empresaId), eq(titulosFinanceiros.chaveImportacao, `RH-ENCARGOS-${folha[0].id}`))).limit(1))[0]?.id ?? null;
     const idsTitulos = [...itens.flatMap((item) => item.tituloFinanceiroId ? [item.tituloFinanceiroId] : []), ...(tituloEncargosId ? [tituloEncargosId] : [])];
     if (idsTitulos.length) {
-      const titulos = await db.select().from(titulosFinanceiros).where(inArray(titulosFinanceiros.id, idsTitulos));
+      const titulos = await db.select().from(titulosFinanceiros).where(and(inArray(titulosFinanceiros.id, idsTitulos), eq(titulosFinanceiros.empresaId, empresaId)));
       if (titulos.some((titulo) => numero(titulo.valorBaixado) > 0 || titulo.estado === "quitado" || titulo.estado === "parcial")) throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível reabrir: há título financeiro da folha já baixado. Estorne ou desconcilie o título primeiro." });
-      await db.update(titulosFinanceiros).set({ estado: "cancelado", canceladoEm: new Date(), canceladoPor: ctx.user.id }).where(inArray(titulosFinanceiros.id, titulos.map((titulo) => titulo.id)));
-      await db.update(itensFolhaPagamentoRh).set({ tituloFinanceiroId: null }).where(eq(itensFolhaPagamentoRh.folhaId, input.folhaId));
+      await db.update(titulosFinanceiros).set({ estado: "cancelado", canceladoEm: new Date(), canceladoPor: ctx.user.id }).where(and(inArray(titulosFinanceiros.id, titulos.map((titulo) => titulo.id)), eq(titulosFinanceiros.empresaId, empresaId)));
+      await db.update(itensFolhaPagamentoRh).set({ tituloFinanceiroId: null }).where(and(eq(itensFolhaPagamentoRh.folhaId, input.folhaId), eq(itensFolhaPagamentoRh.empresaId, empresaId)));
     }
     const parcelasDaFolha = await db.select().from(parcelasAdiantamentosRh).where(and(eq(parcelasAdiantamentosRh.empresaId, empresaId), eq(parcelasAdiantamentosRh.folhaId, input.folhaId), eq(parcelasAdiantamentosRh.estado, "descontada")));
-    for (const parcela of parcelasDaFolha) await db.update(parcelasAdiantamentosRh).set({ estado: "pendente", folhaId: null }).where(eq(parcelasAdiantamentosRh.id, parcela.id));
+    for (const parcela of parcelasDaFolha) await db.update(parcelasAdiantamentosRh).set({ estado: "pendente", folhaId: null }).where(and(eq(parcelasAdiantamentosRh.id, parcela.id), eq(parcelasAdiantamentosRh.empresaId, empresaId)));
     const adiantamentosParcelados = Array.from(new Set(parcelasDaFolha.map((parcela) => parcela.adiantamentoId)));
     const planosReabertos = await planosDosAdiantamentos(db, empresaId, adiantamentosParcelados);
-    for (const adiantamentoId of adiantamentosParcelados) await db.update(adiantamentosRh).set(situacaoAposBaixaParcelas(planosReabertos.filter((parcela) => parcela.adiantamentoId === adiantamentoId))).where(eq(adiantamentosRh.id, adiantamentoId));
+    for (const adiantamentoId of adiantamentosParcelados) await db.update(adiantamentosRh).set(situacaoAposBaixaParcelas(planosReabertos.filter((parcela) => parcela.adiantamentoId === adiantamentoId))).where(and(eq(adiantamentosRh.id, adiantamentoId), eq(adiantamentosRh.empresaId, empresaId)));
     const adiantamentosLegados = await db.select().from(adiantamentosRh).where(and(eq(adiantamentosRh.empresaId, empresaId), eq(adiantamentosRh.competencia, folha[0].competencia), eq(adiantamentosRh.estado, "descontado")));
     const planosLegados = await planosDosAdiantamentos(db, empresaId, adiantamentosLegados.map((adiantamento) => adiantamento.id));
-    for (const adiantamento of adiantamentosLegados.filter((item) => !planosLegados.some((parcela) => parcela.adiantamentoId === item.id))) await db.update(adiantamentosRh).set({ saldoPendente: adiantamento.valor, estado: "aberto" }).where(eq(adiantamentosRh.id, adiantamento.id));
-    await db.update(folhasPagamentoRh).set({ estado: "aberta", reabertaEm: new Date(), reabertaPor: ctx.user.id, motivoReabertura: input.motivo, tituloEncargosFinanceiroId: null }).where(eq(folhasPagamentoRh.id, input.folhaId));
+    for (const adiantamento of adiantamentosLegados.filter((item) => !planosLegados.some((parcela) => parcela.adiantamentoId === item.id))) await db.update(adiantamentosRh).set({ saldoPendente: adiantamento.valor, estado: "aberto" }).where(and(eq(adiantamentosRh.id, adiantamento.id), eq(adiantamentosRh.empresaId, empresaId)));
+    await db.update(folhasPagamentoRh).set({ estado: "aberta", reabertaEm: new Date(), reabertaPor: ctx.user.id, motivoReabertura: input.motivo, tituloEncargosFinanceiroId: null }).where(and(eq(folhasPagamentoRh.id, input.folhaId), eq(folhasPagamentoRh.empresaId, empresaId)));
     return { success: true };
   }),
 };

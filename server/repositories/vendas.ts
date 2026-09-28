@@ -123,7 +123,7 @@ export async function updateProdutoComercial(
   const existente = await db.select({ id: produtosComerciais.id }).from(produtosComerciais)
     .where(and(eq(produtosComerciais.id, id), eq(produtosComerciais.empresaId, empresaId))).limit(1);
   if (!existente[0]) throw new Error("Produto comercial não encontrado");
-  if (Object.keys(data).length) await db.update(produtosComerciais).set(data).where(eq(produtosComerciais.id, id));
+  if (Object.keys(data).length) await db.update(produtosComerciais).set({ nome: data.nome, tipoComercializacao: data.tipoComercializacao, precoPadrao: data.precoPadrao, observacoes: data.observacoes, ativo: data.ativo }).where(and(eq(produtosComerciais.id, id), eq(produtosComerciais.empresaId, empresaId)));
   if (componentes !== undefined) {
     await db.delete(componentesProdutoComercial).where(and(eq(componentesProdutoComercial.produtoComercialId, id), eq(componentesProdutoComercial.empresaId, empresaId)));
     if (componentes.length) await db.insert(componentesProdutoComercial).values(componentes.map((componente): InsertComponenteProdutoComercial => ({
@@ -180,14 +180,14 @@ export async function atualizarCabecalhoCargasEmLote(data: {
         cabecalho.frete = frete.toFixed(2);
         cabecalho.valorTotal = valorTotal.toFixed(2);
       }
-      await tx.update(romaneiosCargaToras).set(cabecalho).where(eq(romaneiosCargaToras.id, carga.id));
+      await tx.update(romaneiosCargaToras).set(cabecalho).where(and(eq(romaneiosCargaToras.id, carga.id), eq(romaneiosCargaToras.empresaId, data.empresaId)));
       if (titulo && alteraFinanceiro) await tx.update(titulosFinanceiros).set({
         fornecedorId: data.fornecedorId === undefined ? titulo.fornecedorId : data.fornecedorId,
         contraparteNome: data.fornecedorId === undefined ? titulo.contraparteNome : fornecedorNovo?.nome ?? carga.origem,
         dataEmissao: dataCarga, competencia: dataCarga, dataVencimento,
         valorOriginal: data.fretePorMetroCubico === undefined ? titulo.valorOriginal : valorTotal.toFixed(2),
         estado: calcularEstadoTitulo({ valorOriginal: data.fretePorMetroCubico === undefined ? titulo.valorOriginal : valorTotal.toFixed(2), dataVencimento }),
-      }).where(eq(titulosFinanceiros.id, titulo.id));
+      }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, data.empresaId)));
     }
     return { atualizados: cargas.length };
   });
@@ -229,7 +229,7 @@ export async function atualizarCabecalhoSerragensEmLote(data: {
       if (data.clienteId && data.clienteId !== servico.clienteId) {
         const lotes = await tx.select().from(lotesPecasSerradas).where(and(eq(lotesPecasSerradas.serragemTerceirosId, servico.id), eq(lotesPecasSerradas.empresaId, data.empresaId)));
         for (const lote of lotes) {
-          const movimentoPosterior = await tx.select({ id: movimentacoesEstoqueSerrado.id }).from(movimentacoesEstoqueSerrado).where(and(eq(movimentacoesEstoqueSerrado.loteId, lote.id), ne(movimentacoesEstoqueSerrado.tipo, "entrada_producao"))).limit(1);
+          const movimentoPosterior = await tx.select({ id: movimentacoesEstoqueSerrado.id }).from(movimentacoesEstoqueSerrado).where(and(and(eq(movimentacoesEstoqueSerrado.loteId, lote.id), ne(movimentacoesEstoqueSerrado.tipo, "entrada_producao")), eq(movimentacoesEstoqueSerrado.empresaId, data.empresaId))).limit(1);
           if (movimentoPosterior[0] || lote.quantidadeDisponivel !== lote.quantidadeProduzida) throw new Error(`O serviço ${servico.numero} possui peças movimentadas e não pode alterar o cliente em lote`);
         }
         await tx.update(lotesPecasSerradas).set({ clienteProprietarioId: data.clienteId }).where(and(eq(lotesPecasSerradas.serragemTerceirosId, servico.id), eq(lotesPecasSerradas.empresaId, data.empresaId)));
@@ -240,12 +240,12 @@ export async function atualizarCabecalhoSerragensEmLote(data: {
       if (data.dataVencimento) cabecalho.dataVencimento = dataVencimento;
       if (data.responsavel !== undefined) cabecalho.responsavel = normalizarTextoCabecalho(data.responsavel);
       if (data.observacoes !== undefined) cabecalho.observacoes = normalizarTextoCabecalho(data.observacoes);
-      await tx.update(serragensTerceiros).set(cabecalho).where(eq(serragensTerceiros.id, servico.id));
+      await tx.update(serragensTerceiros).set(cabecalho).where(and(eq(serragensTerceiros.id, servico.id), eq(serragensTerceiros.empresaId, data.empresaId)));
       if (titulo && alteraFinanceiro) await tx.update(titulosFinanceiros).set({
         clienteId: data.clienteId ?? titulo.clienteId, contraparteNome: data.clienteId ? clienteNovo!.nome : titulo.contraparteNome,
         dataEmissao: dataProducao, competencia: dataProducao, dataVencimento,
         estado: calcularEstadoTitulo({ valorOriginal: titulo.valorOriginal, dataVencimento }),
-      }).where(eq(titulosFinanceiros.id, titulo.id));
+      }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, data.empresaId)));
     }
     return { atualizados: servicos.length };
   });
@@ -394,7 +394,7 @@ export async function getOrcamentoWithItems(id: number) {
   if (!db) return undefined;
   const orc = await db.select().from(orcamentos).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId))).limit(1);
   if (orc.length === 0) return undefined;
-  const itens = await db.select().from(itensOrcamento).where(eq(itensOrcamento.orcamentoId, id));
+  const itens = await db.select().from(itensOrcamento).where(and(eq(itensOrcamento.orcamentoId, id), eq(itensOrcamento.empresaId, empresaId)));
   const componentes = itens.length
     ? await db.select().from(componentesPacoteOrcamento).where(and(eq(componentesPacoteOrcamento.empresaId, empresaId), inArray(componentesPacoteOrcamento.itemOrcamentoId, itens.map((item) => item.id))))
     : [];
@@ -423,9 +423,10 @@ export async function getOrcamentoById(id: number) {
 }
 
 async function validarAlteracaoOrcamento(id: number, confirmacaoDupla = false, database?: any) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
-  const resultado = await db.select().from(orcamentos).where(eq(orcamentos.id, id)).limit(1);
+  const resultado = await db.select().from(orcamentos).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId))).limit(1);
   const orcamento = resultado[0];
   if (!orcamento) throw new Error("Orçamento não encontrado");
   if (!podeAlterarOrcamentoPago(orcamento.pago, confirmacaoDupla)) {
@@ -519,18 +520,20 @@ export async function createOrcamento(
 }
 
 export async function updateOrcamento(id: number, data: Partial<InsertOrcamento>, confirmacaoDupla = false) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await validarAlteracaoOrcamento(id, confirmacaoDupla);
-  await db.update(orcamentos).set(data).where(eq(orcamentos.id, id));
+  await db.update(orcamentos).set(data).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId)));
   return { success: true };
 }
 
 export async function cancelarRecebivelDeVendaExcluida(orcamentoId: number, userId: number, database?: any) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
   const titulos = await db.select().from(titulosFinanceiros)
-    .where(and(eq(titulosFinanceiros.origem, "orcamento"), eq(titulosFinanceiros.orcamentoId, orcamentoId)));
+    .where(and(and(eq(titulosFinanceiros.origem, "orcamento"), eq(titulosFinanceiros.orcamentoId, orcamentoId)), eq(titulosFinanceiros.empresaId, empresaId)));
   if (!titulos.length) return { cancelado: false, tituloIds: [] };
   if (titulos.some((titulo: { valorBaixado: string }) => decimalParaNumero(titulo.valorBaixado) > 0)) {
     throw new Error("A venda possui recebimentos registrados e não pode ser excluída. Regularize as baixas primeiro.");
@@ -540,19 +543,20 @@ export async function cancelarRecebivelDeVendaExcluida(orcamentoId: number, user
   if (!titulosAtivos.length) return { cancelado: false, tituloIds: [] };
   const tituloIds = titulosAtivos.map((titulo: { id: number }) => titulo.id);
   await db.update(titulosFinanceiros).set({ estado: "cancelado", canceladoEm: resolvidoEm, canceladoPor: userId })
-    .where(inArray(titulosFinanceiros.id, tituloIds));
-  await db.update(alertasFinanceiros).set({ resolvidoEm }).where(inArray(alertasFinanceiros.tituloId, tituloIds));
+    .where(and(inArray(titulosFinanceiros.id, tituloIds), eq(titulosFinanceiros.empresaId, empresaId)));
+  await db.update(alertasFinanceiros).set({ resolvidoEm }).where(and(inArray(alertasFinanceiros.tituloId, tituloIds), eq(alertasFinanceiros.empresaId, empresaId)));
   return { cancelado: true, tituloIds, tituloId: tituloIds[0] };
 }
 
 export async function deleteOrcamento(id: number, confirmacaoDupla = false, userId?: number) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await validarAlteracaoOrcamento(id, confirmacaoDupla);
   if (userId) await cancelarRecebivelDeVendaExcluida(id, userId, db);
-  await db.delete(taxasAdicionaisOrcamento).where(eq(taxasAdicionaisOrcamento.orcamentoId, id));
-  await db.delete(itensOrcamento).where(eq(itensOrcamento.orcamentoId, id));
-  await db.delete(orcamentos).where(eq(orcamentos.id, id));
+  await db.delete(taxasAdicionaisOrcamento).where(and(eq(taxasAdicionaisOrcamento.orcamentoId, id), eq(taxasAdicionaisOrcamento.empresaId, empresaId)));
+  await db.delete(itensOrcamento).where(and(eq(itensOrcamento.orcamentoId, id), eq(itensOrcamento.empresaId, empresaId)));
+  await db.delete(orcamentos).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -560,7 +564,7 @@ export async function atribuirNumeroVendaAprovada(orcamentoId: number, database?
   const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
   const empresaId = (await getEmpresaUnica()).id;
-  const venda = await db.select().from(orcamentos).where(eq(orcamentos.id, orcamentoId)).limit(1);
+  const venda = await db.select().from(orcamentos).where(and(eq(orcamentos.id, orcamentoId), eq(orcamentos.empresaId, empresaId))).limit(1);
   if (!venda[0]) throw new Error("Venda não encontrada");
   if (venda[0].numero) return venda[0].numero;
 
@@ -571,7 +575,7 @@ export async function atribuirNumeroVendaAprovada(orcamentoId: number, database?
     orcamentoId,
     numero,
   });
-  await db.update(orcamentos).set({ numero }).where(eq(orcamentos.id, orcamentoId));
+  await db.update(orcamentos).set({ numero }).where(and(eq(orcamentos.id, orcamentoId), eq(orcamentos.empresaId, empresaId)));
   return numero;
 }
 
@@ -582,13 +586,14 @@ export async function updateOrcamentoEstado(
   confirmacaoDupla = false,
   dependencias?: { database?: any; criarTituloReceber?: (orcamentoId: number, usuarioId: number) => Promise<unknown>; atribuirNumero?: (orcamentoId: number) => Promise<string> },
 ) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = dependencias?.database ?? await getDb();
   if (!db) throw new Error("Database not available");
   const orcamento = await validarAlteracaoOrcamento(id, confirmacaoDupla, db);
   const numeroAprovado = novoEstado === "aprovado"
     ? await (dependencias?.atribuirNumero ?? ((orcamentoId: number) => atribuirNumeroVendaAprovada(orcamentoId, db)))(id)
     : undefined;
-  await db.update(orcamentos).set({ estado: novoEstado }).where(eq(orcamentos.id, id));
+  await db.update(orcamentos).set({ estado: novoEstado }).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId)));
   if (userId) {
     await db.insert(historicoAlteracoes).values({
       empresaId: orcamento.empresaId,
@@ -637,7 +642,7 @@ export async function registrarPagamentoOrcamento(id: number, userId: number, fo
       criadoPor: userId,
     });
   }
-  await db.update(orcamentos).set({ pago: true, pagoEm, formaPagamento, pagoPor: userId }).where(eq(orcamentos.id, id));
+  await db.update(orcamentos).set({ pago: true, pagoEm, formaPagamento, pagoPor: userId }).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId)));
   await db.insert(historicoAlteracoes).values({
     empresaId: orcamento.empresaId,
     orcamentoId: id,
@@ -721,17 +726,18 @@ export async function atualizarDatasOrcamento(
   confirmacaoDupla = false,
   database?: any,
 ) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
   await validarAlteracaoOrcamento(id, confirmacaoDupla, db);
-  await db.update(orcamentos).set(datas).where(eq(orcamentos.id, id));
+  await db.update(orcamentos).set(datas).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId)));
 
   const titulosAtivos = await db.select().from(titulosFinanceiros)
-    .where(and(
+    .where(and(and(
       eq(titulosFinanceiros.origem, "orcamento"),
       eq(titulosFinanceiros.orcamentoId, id),
       ne(titulosFinanceiros.estado, "cancelado"),
-    ));
+    ), eq(titulosFinanceiros.empresaId, empresaId)));
   const titulo = titulosAtivos.length === 1 ? titulosAtivos[0] : undefined;
   if (titulo) {
     const estado = calcularEstadoTitulo({
@@ -746,10 +752,10 @@ export async function atualizarDatasOrcamento(
       dataVencimento: datas.dataVencimento,
       competencia: datas.competencia,
       estado,
-    }).where(eq(titulosFinanceiros.id, titulo.id));
+    }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
   } else if (titulosAtivos.length > 1) {
     await db.update(titulosFinanceiros).set({ competencia: datas.competencia })
-      .where(inArray(titulosFinanceiros.id, titulosAtivos.map((titulo: { id: number }) => titulo.id)));
+      .where(and(inArray(titulosFinanceiros.id, titulosAtivos.map((titulo: { id: number }) => titulo.id)), eq(titulosFinanceiros.empresaId, empresaId)));
   }
   return { success: true, tituloAtualizado: Boolean(titulo), parcelasPreservadas: titulosAtivos.length > 1 };
 }

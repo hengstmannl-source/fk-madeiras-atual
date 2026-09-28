@@ -465,7 +465,7 @@ export async function criarRomaneioCargaToras(data: {
     const id = getInsertedId(insercao as MysqlInsertResult);
     const sequencia = await reservarProximoNumeroDocumento(tx, "romaneio_entrada");
     const numero = formatarNumeroDocumentoPadronizado("romaneio_entrada", sequencia);
-    await tx.update(romaneiosCargaToras).set({ numero }).where(eq(romaneiosCargaToras.id, id));
+    await tx.update(romaneiosCargaToras).set({ numero }).where(and(eq(romaneiosCargaToras.id, id), eq(romaneiosCargaToras.empresaId, data.empresaId)));
     await sincronizarTituloMateriaPrimaCarga(tx, {
       romaneioId: id,
       numero,
@@ -516,6 +516,7 @@ export async function atualizarRomaneioCargaToras(id: number, data: {
   fretePorMetroCubico: string;
   plaquetas: PlaquetaCargaEntrada[];
 }) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const plaquetasPreparadas = prepararPlaquetasCarga(data.plaquetas);
@@ -526,13 +527,13 @@ export async function atualizarRomaneioCargaToras(id: number, data: {
   const valorTotal = valorProdutos + frete;
 
   return db.transaction(async (tx: any) => {
-    const carga = (await tx.select().from(romaneiosCargaToras).where(eq(romaneiosCargaToras.id, id)).limit(1))[0];
+    const carga = (await tx.select().from(romaneiosCargaToras).where(and(eq(romaneiosCargaToras.id, id), eq(romaneiosCargaToras.empresaId, empresaId))).limit(1))[0];
     if (!carga) throw new Error("Romaneio de carga não encontrado");
     if (data.centroCustoId) await obterCentroCustoAtivo(data.centroCustoId, tx, carga.empresaId);
-    const existentes = await tx.select().from(plaquetas).where(eq(plaquetas.romaneioCargaId, id));
+    const existentes = await tx.select().from(plaquetas).where(and(eq(plaquetas.romaneioCargaId, id), eq(plaquetas.empresaId, empresaId)));
     if (existentes.some((plaqueta: any) => plaqueta.estado !== "disponivel")) throw new Error("Este romaneio possui toras utilizadas na produção e não pode ser alterado");
-    for (const plaqueta of existentes) await tx.delete(movimentacoesPlaquetas).where(eq(movimentacoesPlaquetas.plaquetaId, plaqueta.id));
-    for (const plaqueta of existentes) await tx.delete(plaquetas).where(eq(plaquetas.id, plaqueta.id));
+    for (const plaqueta of existentes) await tx.delete(movimentacoesPlaquetas).where(and(eq(movimentacoesPlaquetas.plaquetaId, plaqueta.id), eq(movimentacoesPlaquetas.empresaId, empresaId)));
+    for (const plaqueta of existentes) await tx.delete(plaquetas).where(and(eq(plaquetas.id, plaqueta.id), eq(plaquetas.empresaId, empresaId)));
 
     for (const plaqueta of plaquetasPreparadas) {
       const identificacao = await prepararIdentificacaoPlaqueta(tx, plaqueta.codigoFisico);
@@ -552,7 +553,7 @@ export async function atualizarRomaneioCargaToras(id: number, data: {
       const plaquetaId = getInsertedId(await tx.insert(plaquetas).values({ ...valores, empresaId: carga.empresaId, romaneioCargaId: id, estado: "disponivel", criadoPor: carga.criadoPor }) as MysqlInsertResult);
       await tx.insert(movimentacoesPlaquetas).values({ empresaId: carga.empresaId, plaquetaId, tipo: "entrada", volume: plaqueta.volume.toFixed(6), motivo: `Entrada pelo romaneio ${carga.numero}`, criadoPor: carga.criadoPor });
     }
-    await tx.update(romaneiosCargaToras).set({ dataCarga: data.dataCarga, dataVencimento: data.dataVencimento, origem: data.origem?.trim() || null, fornecedorId: data.fornecedorId ?? null, centroCustoId: data.centroCustoId ?? null, responsavel: data.responsavel?.trim() || null, observacoes: data.observacoes?.trim() || null, totalPlaquetas: plaquetasPreparadas.length, volumeTotal: volumeTotal.toFixed(6), valorProdutos: valorProdutos.toFixed(2), fretePorMetroCubico: fretePorMetroCubico.toFixed(2), frete: frete.toFixed(2), valorTotal: valorTotal.toFixed(2) }).where(eq(romaneiosCargaToras.id, id));
+    await tx.update(romaneiosCargaToras).set({ dataCarga: data.dataCarga, dataVencimento: data.dataVencimento, origem: data.origem?.trim() || null, fornecedorId: data.fornecedorId ?? null, centroCustoId: data.centroCustoId ?? null, responsavel: data.responsavel?.trim() || null, observacoes: data.observacoes?.trim() || null, totalPlaquetas: plaquetasPreparadas.length, volumeTotal: volumeTotal.toFixed(6), valorProdutos: valorProdutos.toFixed(2), fretePorMetroCubico: fretePorMetroCubico.toFixed(2), frete: frete.toFixed(2), valorTotal: valorTotal.toFixed(2) }).where(and(eq(romaneiosCargaToras.id, id), eq(romaneiosCargaToras.empresaId, empresaId)));
     await sincronizarTituloMateriaPrimaCarga(tx, {
       romaneioId: id,
       numero: carga.numero,
@@ -609,8 +610,8 @@ async function sincronizarTituloMateriaPrimaCarga(tx: any, data: {
   const existente = (await tx.select().from(titulosFinanceiros).where(and(eq(titulosFinanceiros.romaneioCargaId, data.romaneioId), eq(titulosFinanceiros.empresaId, data.empresaId))).limit(1))[0];
   if (existente) {
     if (decimalParaNumero(existente.valorBaixado) > 0) throw new Error("A carga possui uma conta a pagar com baixa registrada e não pode ser alterada");
-    await tx.update(titulosFinanceiros).set(valores).where(eq(titulosFinanceiros.id, existente.id));
-    await tx.update(romaneiosCargaToras).set({ tituloFinanceiroId: existente.id }).where(eq(romaneiosCargaToras.id, data.romaneioId));
+    await tx.update(titulosFinanceiros).set(valores).where(and(eq(titulosFinanceiros.id, existente.id), eq(titulosFinanceiros.empresaId, data.empresaId)));
+    await tx.update(romaneiosCargaToras).set({ tituloFinanceiroId: existente.id }).where(and(eq(romaneiosCargaToras.id, data.romaneioId), eq(romaneiosCargaToras.empresaId, data.empresaId)));
     return { id: existente.id, atualizado: true };
   }
   const { id: tituloFinanceiroId } = await garantirTituloFinanceiroAutomatico({
@@ -619,34 +620,35 @@ async function sincronizarTituloMateriaPrimaCarga(tx: any, data: {
     criadoPor: data.criadoPor,
     database: tx,
   });
-  await tx.update(romaneiosCargaToras).set({ tituloFinanceiroId }).where(eq(romaneiosCargaToras.id, data.romaneioId));
+  await tx.update(romaneiosCargaToras).set({ tituloFinanceiroId }).where(and(eq(romaneiosCargaToras.id, data.romaneioId), eq(romaneiosCargaToras.empresaId, data.empresaId)));
   return { id: tituloFinanceiroId, atualizado: false };
 }
 
 export async function excluirRomaneioCargaToras(id: number, canceladoPor: number) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   return db.transaction(async (tx: any) => {
-    const carga = (await tx.select().from(romaneiosCargaToras).where(eq(romaneiosCargaToras.id, id)).limit(1))[0];
+    const carga = (await tx.select().from(romaneiosCargaToras).where(and(eq(romaneiosCargaToras.id, id), eq(romaneiosCargaToras.empresaId, empresaId))).limit(1))[0];
     if (!carga) throw new Error("Romaneio de carga não encontrado");
-    const itens = await tx.select().from(plaquetas).where(eq(plaquetas.romaneioCargaId, id));
+    const itens = await tx.select().from(plaquetas).where(and(eq(plaquetas.romaneioCargaId, id), eq(plaquetas.empresaId, empresaId)));
     if (itens.some((plaqueta: any) => plaqueta.estado !== "disponivel")) {
       throw new Error("Este romaneio possui toras utilizadas na produção e não pode ser excluído");
     }
     if (carga.tituloFinanceiroId) {
-      const titulo = (await tx.select().from(titulosFinanceiros).where(eq(titulosFinanceiros.id, carga.tituloFinanceiroId)).limit(1))[0];
+      const titulo = (await tx.select().from(titulosFinanceiros).where(and(eq(titulosFinanceiros.id, carga.tituloFinanceiroId), eq(titulosFinanceiros.empresaId, empresaId))).limit(1))[0];
       if (titulo && decimalParaNumero(titulo.valorBaixado) > 0) throw new Error("A conta a pagar desta carga já possui baixa e o romaneio não pode ser excluído");
       if (titulo && titulo.estado !== "cancelado") {
-        await tx.update(titulosFinanceiros).set({ estado: "cancelado", canceladoEm: new Date(), canceladoPor }).where(eq(titulosFinanceiros.id, titulo.id));
+        await tx.update(titulosFinanceiros).set({ estado: "cancelado", canceladoEm: new Date(), canceladoPor }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
       }
     }
 
     for (const plaqueta of itens) {
-      await tx.delete(movimentacoesPlaquetas).where(eq(movimentacoesPlaquetas.plaquetaId, plaqueta.id));
-      await tx.delete(plaquetas).where(eq(plaquetas.id, plaqueta.id));
+      await tx.delete(movimentacoesPlaquetas).where(and(eq(movimentacoesPlaquetas.plaquetaId, plaqueta.id), eq(movimentacoesPlaquetas.empresaId, empresaId)));
+      await tx.delete(plaquetas).where(and(eq(plaquetas.id, plaqueta.id), eq(plaquetas.empresaId, empresaId)));
     }
-    await tx.delete(romaneiosCargaToras).where(eq(romaneiosCargaToras.id, id));
+    await tx.delete(romaneiosCargaToras).where(and(eq(romaneiosCargaToras.id, id), eq(romaneiosCargaToras.empresaId, empresaId)));
     return { id, numero: carga.numero, totalPlaquetas: itens.length };
   });
 }

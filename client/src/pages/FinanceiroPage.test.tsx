@@ -257,7 +257,7 @@ describe("FinanceiroPage — cancelamento manual", () => {
     state.importar.mockReset();
     state.invalidar.mockReset();
     state.exportarPdf.mockReset();
-    state.exportarPdf.mockResolvedValue({ url: "blob:relatorio-financeiro", nomeArquivo: "contas-a-pagar-2026-08-18.pdf" });
+    state.exportarPdf.mockResolvedValue({ url: `blob:${window.location.origin}/relatorio-financeiro`, nomeArquivo: "contas-a-pagar-2026-08-18.pdf" });
     state.anexos = [{
       id: 91,
       tituloId: 13,

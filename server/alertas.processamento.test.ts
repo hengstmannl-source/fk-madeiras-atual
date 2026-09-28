@@ -1,14 +1,18 @@
-import { describe, expect, it } from "vitest";
+// Business-rule unit tests use an explicit server-side company fixture.
+vi.mock("./repositories/identidade", async (importOriginal) => ({ ...await importOriginal<typeof import("./repositories/identidade")>(), getEmpresaUnica: vi.fn(async () => ({ id: 1, ativa: true })) }));
+import { describe, expect, it, vi } from "vitest";
 import { alertasFinanceiros, configuracoesFinanceiras, titulosFinanceiros } from "../drizzle/schema";
 import { processarAlertasFinanceiros, processarRecorrenciasFinanceiras } from "./db";
+import { getEmpresaUnica } from "./repositories/identidade";
+import { MySqlDialect } from "drizzle-orm/mysql-core";
 
 function criarBancoFinanceiroFalso(titulo: any, alertas: any[], configuracoes = [{ id: 1, empresaId: 1, alertaDiasAntecedencia: 7 }]) {
   let proximoId = 1;
   return {
     select: () => ({
       from: (tabela: unknown) => {
-        if (tabela === titulosFinanceiros) return Promise.resolve([titulo]);
-        if (tabela === configuracoesFinanceiras) return Promise.resolve(configuracoes);
+        if (tabela === titulosFinanceiros) return { where: async (condition: any) => new MySqlDialect().sqlToQuery(condition).params.includes(titulo.empresaId) ? [titulo] : [] };
+        if (tabela === configuracoesFinanceiras) return { where: async (condition: any) => configuracoes.filter(c => new MySqlDialect().sqlToQuery(condition).params.includes(c.empresaId)) };
         return {
           where: () => {
             if (tabela === alertasFinanceiros) return Promise.resolve(alertas.filter((alerta) => alerta.estado === "ativo"));
@@ -89,6 +93,7 @@ describe("processarAlertasFinanceiros", () => {
   });
 
   it("usa o prazo de alerta e grava a ocorrência somente na empresa do título", async () => {
+    vi.mocked(getEmpresaUnica).mockResolvedValueOnce({ id: 2, ativa: true } as any);
     const agora = new Date(2026, 7, 11, 12);
     const titulo: any = {
       id: 25,

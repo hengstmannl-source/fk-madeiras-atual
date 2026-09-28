@@ -45,8 +45,7 @@ export async function storagePut(
   });
 
   if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+    throw new Error("Não foi possível preparar o upload.");
   }
 
   const { url: s3Url } = (await presignResp.json()) as { url: string };
@@ -88,8 +87,7 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
   });
 
   if (!resp.ok) {
-    const msg = await resp.text().catch(() => resp.statusText);
-    throw new Error(`Storage signed URL failed (${resp.status}): ${msg}`);
+    throw new Error("Não foi possível obter o arquivo.");
   }
 
   const { url } = (await resp.json()) as { url: string };

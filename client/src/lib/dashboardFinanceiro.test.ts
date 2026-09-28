@@ -32,8 +32,8 @@ describe("indicadores financeiros do Dashboard", () => {
 
   it("não considera vencido um título com prazo no dia atual", () => {
     const resumo = resumirDashboardFinanceiro([
-      { tipo: "pagar", estado: "aberto", dataVencimento: "2026-08-13T00:00:00.000Z", valorOriginal: "100" },
-    ], new Date("2026-08-13T12:00:00.000Z"));
+      { tipo: "pagar", estado: "aberto", dataVencimento: new Date(2026, 7, 13, 0).toISOString(), valorOriginal: "100" },
+    ], new Date(2026, 7, 13, 12));
     expect(resumo.vencido).toBe(0);
   });
 });

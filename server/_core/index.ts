@@ -11,6 +11,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerPdfRoutes } from "../pdfRouter";
 import { registerFinanceiroScheduleRoutes } from "../scheduledFinanceiro";
+import { criarLimitadorLogin } from "./loginRateLimit";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,12 @@ async function startServer() {
   const server = createServer(app);
 
   app.disable("x-powered-by");
+  // Nginx on the same host by default; explicitly configure exact proxy IPs/CIDRs elsewhere.
+  app.set("trust proxy", process.env.TRUSTED_PROXY_CIDRS?.split(",").map(value => value.trim()).filter(Boolean) ?? "loopback");
+  app.use((_req, res, next) => {
+    res.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+  });
   app.use(
     helmet({
       contentSecurityPolicy:
@@ -55,9 +62,10 @@ async function startServer() {
     })
   );
 
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // Largest upload: 8 MiB binary = 11,184,812 base64 characters plus JSON metadata.
+  app.use("/api/trpc", criarLimitadorLogin());
+  app.use(express.json({ limit: "16mb" }));
+  app.use(express.urlencoded({ limit: "16mb", extended: false, parameterLimit: 1000 }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerFinanceiroScheduleRoutes(app);

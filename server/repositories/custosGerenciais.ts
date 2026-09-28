@@ -285,8 +285,8 @@ export async function listarLancamentosCustosGerenciais(input: {
     categoria: categoriasCustosGerenciais,
     centro: centrosCustosGerenciais,
   }).from(lancamentosCustosGerenciais)
-    .innerJoin(categoriasCustosGerenciais, eq(categoriasCustosGerenciais.id, lancamentosCustosGerenciais.categoriaCustoId))
-    .innerJoin(centrosCustosGerenciais, eq(centrosCustosGerenciais.id, categoriasCustosGerenciais.centroCustoId))
+    .innerJoin(categoriasCustosGerenciais, and(eq(categoriasCustosGerenciais.id, lancamentosCustosGerenciais.categoriaCustoId), eq(categoriasCustosGerenciais.empresaId, empresaId)))
+    .innerJoin(centrosCustosGerenciais, and(eq(centrosCustosGerenciais.id, categoriasCustosGerenciais.centroCustoId), eq(centrosCustosGerenciais.empresaId, empresaId)))
     .where(and(...condicoes))
     .orderBy(desc(lancamentosCustosGerenciais.competencia), desc(lancamentosCustosGerenciais.createdAt));
 }
@@ -365,7 +365,7 @@ export async function cancelarLancamentoCustoGerencial(input: { id: number; moti
       canceladoEm: new Date(),
       canceladoPor: input.canceladoPor,
       motivoCancelamento: motivo,
-    }).where(eq(lancamentosCustosGerenciais.id, lancamento.id));
+    }).where(and(eq(lancamentosCustosGerenciais.id, lancamento.id), eq(lancamentosCustosGerenciais.empresaId, empresaId)));
     return { sucesso: true };
   });
 }
@@ -379,7 +379,7 @@ async function calcularBasesRateio(tx: any, empresaId: number, competencia: Date
       tipo: lotesPecasSerradas.tipo,
       incluirAproveitamentoNoRendimento: romaneiosProducao.incluirAproveitamentoNoRendimento,
     }).from(lotesPecasSerradas)
-      .innerJoin(romaneiosProducao, eq(romaneiosProducao.id, lotesPecasSerradas.romaneioId))
+      .innerJoin(romaneiosProducao, and(eq(romaneiosProducao.id, lotesPecasSerradas.romaneioId), eq(romaneiosProducao.empresaId, empresaId)))
       .where(and(
         eq(lotesPecasSerradas.empresaId, empresaId),
         eq(lotesPecasSerradas.propriedade, "proprio"),
@@ -524,8 +524,8 @@ export async function listarRateiosCustosGerenciais(competencia?: Date) {
     item: itensRateiosCustosGerenciais,
     categoria: categoriasCustosGerenciais,
   }).from(rateiosCustosGerenciais)
-    .leftJoin(itensRateiosCustosGerenciais, eq(itensRateiosCustosGerenciais.rateioId, rateiosCustosGerenciais.id))
-    .leftJoin(categoriasCustosGerenciais, eq(categoriasCustosGerenciais.id, itensRateiosCustosGerenciais.categoriaCustoId))
+    .leftJoin(itensRateiosCustosGerenciais, and(eq(itensRateiosCustosGerenciais.rateioId, rateiosCustosGerenciais.id), eq(itensRateiosCustosGerenciais.empresaId, empresaId)))
+    .leftJoin(categoriasCustosGerenciais, and(eq(categoriasCustosGerenciais.id, itensRateiosCustosGerenciais.categoriaCustoId), eq(categoriasCustosGerenciais.empresaId, empresaId)))
     .where(and(...condicoes))
     .orderBy(desc(rateiosCustosGerenciais.competencia), desc(rateiosCustosGerenciais.versao), asc(categoriasCustosGerenciais.nome));
 }
@@ -785,8 +785,8 @@ async function obterRateioVigente(tx: any, empresaId: number, competencia: Date)
     categoria: categoriasCustosGerenciais,
     centro: centrosCustosGerenciais,
   }).from(itensRateiosCustosGerenciais)
-    .innerJoin(categoriasCustosGerenciais, eq(categoriasCustosGerenciais.id, itensRateiosCustosGerenciais.categoriaCustoId))
-    .innerJoin(centrosCustosGerenciais, eq(centrosCustosGerenciais.id, categoriasCustosGerenciais.centroCustoId))
+    .innerJoin(categoriasCustosGerenciais, and(eq(categoriasCustosGerenciais.id, itensRateiosCustosGerenciais.categoriaCustoId), eq(categoriasCustosGerenciais.empresaId, empresaId)))
+    .innerJoin(centrosCustosGerenciais, and(eq(centrosCustosGerenciais.id, categoriasCustosGerenciais.centroCustoId), eq(centrosCustosGerenciais.empresaId, empresaId)))
     .where(and(eq(itensRateiosCustosGerenciais.empresaId, empresaId), eq(itensRateiosCustosGerenciais.rateioId, rateio.id)));
   return { rateio, itens };
 }
@@ -1018,7 +1018,7 @@ export async function materializarCustoGerencialPorVenda(input: { vendaId: numbe
       });
     }
     const lancamentosDiretos = await tx.select({ lancamento: lancamentosCustosGerenciais, categoria: categoriasCustosGerenciais }).from(lancamentosCustosGerenciais)
-      .innerJoin(categoriasCustosGerenciais, eq(categoriasCustosGerenciais.id, lancamentosCustosGerenciais.categoriaCustoId))
+      .innerJoin(categoriasCustosGerenciais, and(eq(categoriasCustosGerenciais.id, lancamentosCustosGerenciais.categoriaCustoId), eq(categoriasCustosGerenciais.empresaId, empresaId)))
       .where(and(
         eq(lancamentosCustosGerenciais.empresaId, empresaId),
         eq(lancamentosCustosGerenciais.orcamentoId, input.vendaId),
