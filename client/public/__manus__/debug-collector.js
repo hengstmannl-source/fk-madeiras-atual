@@ -79,9 +79,13 @@
       });
     }
 
-    var sanitized = {};
+    var sanitized = Object.create(null);
     for (var k in value) {
       if (Object.prototype.hasOwnProperty.call(value, k)) {
+        if (k === "__proto__" || k === "constructor" || k === "prototype") {
+          continue;
+        }
+
         var isSensitive = CONFIG.sensitiveFields.some(function (f) {
           return k.toLowerCase().indexOf(f) !== -1;
         });
