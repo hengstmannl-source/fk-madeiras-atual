@@ -29,7 +29,7 @@ O SQL do contador de falhas usa `sql` parametrizado com identificadores do schem
 - Scrypt, salt aleatório, timingSafeEqual, HMAC, expiração de sessão, cookies HttpOnly/SameSite=Lax/Secure em produção; sem senha/hash nas respostas públicas.
 - Zod; consultas parametrizadas; ordem/filtros SQL construídos com colunas conhecidas. A varredura não encontrou `.findFirst()`/`.findMany()` ou `sql.raw` alimentado por usuário no servidor.
 - Helmet, x-powered-by desativado, HSTS em produção por 31.536.000 segundos, frame protection, nosniff, referrer policy e CSP de produção mantidos. As permissões de câmera/microfone/geolocalização agora são negadas; não foi encontrado fluxo cliente que as utilize.
-- CSP continua permitindo imagens e frames HTTPS, necessários ao redirecionamento de anexos assinados/previews de PDF; não foi adicionada exceção a script-src. Restrições maiores de host dependem de inventário real do storage.
+- Atualização do PR com a main: preservada a CSP mais restritiva já integrada na main (imagens/frames self, data/blob conforme diretiva; fontes Google explícitas). Previews que redirecionam para storage externo precisam ser verificados em homologação, pois os hosts HTTPS externos deixaram de ser permitidos genericamente. Mantidos também os contêineres sem root da main.
 - Tabelas globais `users`, `empresas` e credenciais não receberam empresaId artificial. A política já existente de leitura para `consulta` foi preservada.
 
 ## 4. Pendências externas

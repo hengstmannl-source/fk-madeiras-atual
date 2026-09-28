@@ -51,8 +51,12 @@ async function startServer() {
           : {
               directives: {
                 ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-                "img-src": ["'self'", "data:", "blob:", "https:"],
-                "frame-src": ["'self'", "blob:", "https:"],
+                "style-src": ["'self'", "https://fonts.googleapis.com"],
+                "style-src-elem": ["'self'", "https://fonts.googleapis.com"],
+                "style-src-attr": ["'unsafe-inline'"],
+                "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
+                "img-src": ["'self'", "data:", "blob:"],
+                "frame-src": ["'self'", "blob:"],
               },
             },
       strictTransportSecurity:

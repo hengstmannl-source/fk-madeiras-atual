@@ -192,7 +192,7 @@ Express, mysql2, cookie, jose, helmet, axios, pdf-lib e XLSX: sem advisory nesta
 - Versões encontradas: 0.44.6. Versão corrigida informada: `>=0.45.2`.
 - Caminhos: `.>drizzle-orm`.
 - Fonte: [GHSA-gpj5-g38j-94v9](https://github.com/advisories/GHSA-gpj5-g38j-94v9). CVEs: CVE-2026-39356.
-- Alcance/ação: Identificadores no código são constantes; não encontrado SQL raw/identificador derivado de input. Atualizado 0.44.6 → 0.45.2 por defesa adicional.
+- Alcance/ação: Identificadores no código são constantes; não encontrado SQL raw/identificador derivado de input. Atualizado 0.44.6 → 0.45.3 por defesa adicional.
 - Risco de compatibilidade: Moderado: versão 0.x; build/typecheck e testes com SQL, sem integração MySQL real.
 - Estado: não reportado na auditoria final.
 

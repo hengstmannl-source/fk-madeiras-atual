@@ -4,7 +4,7 @@ const initial=read('validation/pnpm-audit.json'),final=read('validation/pnpm-aud
 const remaining=Object.values(final.advisories), original=Object.values(initial.advisories);
 const notes={
  '@trpc/server':['runtime','Caller experimental de Next.js não encontrado; Express é o adapter usado. Atualizado com client/react-query para 11.8.0.','Baixo/moderado: minor da mesma major; testes e typecheck.'],
- 'drizzle-orm':['runtime','Identificadores no código são constantes; não encontrado SQL raw/identificador derivado de input. Atualizado 0.44.6 → 0.45.2 por defesa adicional.','Moderado: versão 0.x; build/typecheck e testes com SQL, sem integração MySQL real.'],
+ 'drizzle-orm':['runtime','Identificadores no código são constantes; não encontrado SQL raw/identificador derivado de input. Atualizado 0.44.6 → 0.45.3 por defesa adicional.','Moderado: versão 0.x; build/typecheck e testes com SQL, sem integração MySQL real.'],
  'vite':['dev/build','Vite 7.1.9 → 7.3.5. Servidor Vite só em NODE_ENV=development; produção serve arquivos estáticos. Vite 5.4.20 remanescente pertence ao Vitest 2.','Baixo para Vite 7; corrigir a árvore Vitest requer migração da ferramenta de testes.'],
  'vitest':['dev/test','Uso configurado: vitest run, sem UI/browser server. Adiada migração 2 → 4; não iniciar UI acessível pela rede.','Alto: duas majors e mudanças de configuração/mocks.'],
  '@vitest/mocker':['dev/test','Caminho browser/redirect mock não usado pela suíte node/jsdom. Vinculado à migração Vitest 4.1.11+.','Alto: acompanha a migração do runner.'],
