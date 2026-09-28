@@ -2,6 +2,7 @@ import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useMemo } from "react";
+import { safeInternalRedirectPath } from "@/lib/safeNavigation";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
@@ -74,11 +75,14 @@ export function useAuth(options?: UseAuthOptions) {
     if (meQuery.isLoading || logoutMutation.isPending) return;
     if (state.user) return;
     if (typeof window === "undefined") return;
-    if (redirectPath && window.location.pathname === redirectPath) return;
+    const safeRedirectPath = redirectPath
+      ? safeInternalRedirectPath(redirectPath, window.location.origin)
+      : null;
+    if (safeRedirectPath && window.location.pathname === safeRedirectPath) return;
 
     // Navigate at this moment only. startLogin() mints the nonce + cookie itself.
-    if (redirectPath) {
-      window.location.href = redirectPath;
+    if (safeRedirectPath) {
+      window.location.href = safeRedirectPath;
     } else {
       startLogin();
     }
