@@ -6,6 +6,7 @@ RUN npm install -g corepack@latest
 
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
+COPY vendor/xlsx-0.20.3.tgz ./vendor/xlsx-0.20.3.tgz
 RUN corepack pnpm install --frozen-lockfile
 
 COPY . .
@@ -20,6 +21,7 @@ RUN npm install -g corepack@latest
 
 COPY --from=build /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/vendor/xlsx-0.20.3.tgz ./vendor/xlsx-0.20.3.tgz
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
