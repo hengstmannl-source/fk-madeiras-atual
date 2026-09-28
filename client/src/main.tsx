@@ -7,6 +7,8 @@ import superjson from "superjson";
 import App from "./App";
 import { FormValidationAssistant } from "./components/FormValidationAssistant";
 import { startLogin } from "./const";
+import "@fontsource-variable/dm-sans/opsz.css";
+import "@fontsource-variable/manrope";
 import "./index.css";
 
 const queryClient = new QueryClient();
