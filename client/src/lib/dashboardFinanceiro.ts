@@ -1,3 +1,5 @@
+import { chaveDataFinanceira, hojeFinanceiro } from "@shared/financeiro-data-civil";
+
 export type TituloDashboardFinanceiro = {
   tipo: "receber" | "pagar";
   estado: string;
@@ -26,18 +28,13 @@ export function saldoAbertoDashboard(titulo: TituloDashboardFinanceiro): number 
   return valorOriginal - numeroFinanceiro(titulo.desconto) + numeroFinanceiro(titulo.juros) - numeroFinanceiro(titulo.valorBaixado);
 }
 
-function estaEmAtraso(titulo: TituloDashboardFinanceiro, hoje: Date): boolean {
-  if (titulo.estado === "vencido") return true;
-  if (!titulo.dataVencimento) return false;
-  const vencimento = new Date(titulo.dataVencimento);
-  if (Number.isNaN(vencimento.getTime())) return false;
-  vencimento.setHours(23, 59, 59, 999);
-  return vencimento < hoje;
+function estaEmAtraso(titulo: TituloDashboardFinanceiro, hoje: string): boolean {
+  const vencimento = chaveDataFinanceira(titulo.dataVencimento);
+  return vencimento ? vencimento < hoje : titulo.estado === "vencido";
 }
 
 export function resumirDashboardFinanceiro(titulos: TituloDashboardFinanceiro[], agora = new Date()) {
-  const hoje = new Date(agora);
-  hoje.setHours(0, 0, 0, 0);
+  const hoje = hojeFinanceiro(agora);
   return titulos.reduce((acumulado, titulo) => {
     if (["quitado", "cancelado"].includes(titulo.estado)) return acumulado;
     const saldo = saldoAbertoDashboard(titulo);

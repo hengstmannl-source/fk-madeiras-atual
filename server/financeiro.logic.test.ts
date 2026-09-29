@@ -26,11 +26,33 @@ import { montarFluxoCaixaGerencial } from "./fluxo-caixa.logic";
 
 describe("regras financeiras", () => {
   it("calcula os estados aberto, parcial, quitado e vencido", () => {
-    const hoje = new Date(2026, 7, 11);
+    const hoje = new Date("2026-08-11T12:00:00.000Z");
     expect(calcularEstadoTitulo({ valorOriginal: "100", dataVencimento: hoje, agora: hoje })).toBe("aberto");
     expect(calcularEstadoTitulo({ valorOriginal: "100", valorBaixado: "30", dataVencimento: hoje, agora: hoje })).toBe("parcial");
     expect(calcularEstadoTitulo({ valorOriginal: "100", valorBaixado: "100", dataVencimento: hoje, agora: hoje })).toBe("quitado");
-    expect(calcularEstadoTitulo({ valorOriginal: "100", dataVencimento: new Date(2026, 7, 10), agora: hoje })).toBe("vencido");
+    expect(calcularEstadoTitulo({ valorOriginal: "100", dataVencimento: new Date("2026-08-10T12:00:00.000Z"), agora: hoje })).toBe("vencido");
+  });
+
+  it("classifica o vencimento de hoje pelo dia civil mesmo com timestamp à meia-noite UTC", () => {
+    expect(calcularEstadoTitulo({
+      valorOriginal: "100",
+      dataVencimento: new Date("2026-08-13T00:00:00.000Z"),
+      agora: new Date("2026-08-13T12:00:00.000Z"),
+    })).toBe("aberto");
+    expect(calcularEstadoTitulo({
+      valorOriginal: "100",
+      dataVencimento: new Date("2026-08-12T00:00:00.000Z"),
+      agora: new Date("2026-08-13T12:00:00.000Z"),
+    })).toBe("vencido");
+  });
+
+  it("não mantém como vencido um alerta cujo título tem vencimento civil hoje", () => {
+    expect(classificarAlertaVencimento({
+      estado: "vencido",
+      dataVencimento: new Date("2026-08-13T00:00:00.000Z"),
+      diasAntecedencia: 3,
+      agora: new Date("2026-08-13T12:00:00.000Z"),
+    })).toBe("vence_em_breve");
   });
 
   it("reconstrói saldo, valor baixado e estado a partir de baixas válidas", () => {
@@ -281,11 +303,11 @@ describe("regras financeiras", () => {
   });
 
   it("classifica alertas de vencimento sem alertar títulos quitados", () => {
-    const hoje = new Date(2026, 7, 11);
-    expect(classificarAlertaVencimento({ estado: "vencido", dataVencimento: new Date(2026, 7, 10), diasAntecedencia: 7, agora: hoje })).toBe("vencido");
-    expect(classificarAlertaVencimento({ estado: "aberto", dataVencimento: new Date(2026, 7, 16), diasAntecedencia: 7, agora: hoje })).toBe("vence_em_breve");
-    expect(classificarAlertaVencimento({ estado: "aberto", dataVencimento: new Date(2026, 7, 20), diasAntecedencia: 7, agora: hoje })).toBeNull();
-    expect(classificarAlertaVencimento({ estado: "quitado", dataVencimento: new Date(2026, 7, 11), diasAntecedencia: 7, agora: hoje })).toBeNull();
+    const hoje = new Date("2026-08-11T12:00:00.000Z");
+    expect(classificarAlertaVencimento({ estado: "vencido", dataVencimento: new Date("2026-08-10T12:00:00.000Z"), diasAntecedencia: 7, agora: hoje })).toBe("vencido");
+    expect(classificarAlertaVencimento({ estado: "aberto", dataVencimento: new Date("2026-08-16T12:00:00.000Z"), diasAntecedencia: 7, agora: hoje })).toBe("vence_em_breve");
+    expect(classificarAlertaVencimento({ estado: "aberto", dataVencimento: new Date("2026-08-20T12:00:00.000Z"), diasAntecedencia: 7, agora: hoje })).toBeNull();
+    expect(classificarAlertaVencimento({ estado: "quitado", dataVencimento: new Date("2026-08-11T12:00:00.000Z"), diasAntecedencia: 7, agora: hoje })).toBeNull();
   });
 
   it("não mantém alerta vencido após reagendamento para uma data fora da antecedência", () => {

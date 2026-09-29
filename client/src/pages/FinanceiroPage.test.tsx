@@ -435,7 +435,6 @@ describe("FinanceiroPage — cancelamento manual", () => {
   });
 
   it("mantém a lista vazia até pesquisar, filtra títulos e destaca os compromissos do dia", async () => {
-    const user = userEvent.setup();
     const hoje = new Date().toISOString();
     state.titulos.push(
       { id: 14, descricao: "Fornecedor vence hoje", tipo: "pagar", estado: "aberto", valorOriginal: "850.00", valorBaixado: "0.00", desconto: "0.00", juros: "0.00", dataVencimento: hoje },
@@ -444,29 +443,30 @@ describe("FinanceiroPage — cancelamento manual", () => {
     );
     render(<FinanceiroPage />);
 
-    expect(screen.queryByText("Fornecedor vence hoje")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Fornecedor vence hoje").length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole("table").some((tabela) => within(tabela).queryByText("Fornecedor vence hoje"))).toBe(false);
     expect(screen.getByText(/use os filtros acima para consultar lançamentos/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Descrição ou contraparte")).toBeInTheDocument();
     expect(screen.getByLabelText("Valor mínimo")).toHaveAttribute("inputmode", "decimal");
     expect(screen.getAllByLabelText("Data inicial")[0]).toHaveAttribute("type", "date");
     expect(screen.getAllByLabelText("Data final")[0]).toHaveAttribute("type", "date");
 
-    await user.type(screen.getByLabelText("Descrição ou contraparte"), "fornecedor vence");
-    await user.click(screen.getByRole("button", { name: "Pesquisar" }));
+    fireEvent.change(screen.getByLabelText("Descrição ou contraparte"), { target: { value: "fornecedor vence" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pesquisar" }));
     expect(screen.getAllByText("Fornecedor vence hoje").length).toBeGreaterThan(0);
     expect(screen.getByText(/1 vencem hoje/i)).toBeInTheDocument();
     const tabelaPagar = screen.getAllByRole("table").find((tabela) => within(tabela).queryByText("Fornecedor vence hoje"));
     expect(tabelaPagar).toBeDefined();
     expect(within(tabelaPagar!).queryByText("Carga de toras RC-001")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Limpar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Limpar" }));
     expect(screen.getByText(/use os filtros acima para consultar lançamentos/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Descrição ou contraparte"), "arquivada");
-    await user.click(screen.getByRole("button", { name: "Pesquisar" }));
-    await user.click(screen.getAllByRole("button", { name: "Visão financeira: Contas pagas" }).at(-1)!);
+    fireEvent.change(screen.getByLabelText("Descrição ou contraparte"), { target: { value: "arquivada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pesquisar" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Visão financeira: Contas pagas" }).at(-1)!);
     expect(screen.getByText("Conta paga arquivada")).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "Visão financeira: Contas recebidas" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Visão financeira: Contas recebidas" }).at(-1)!);
     expect(screen.getByText("Receita recebida arquivada")).toBeInTheDocument();
   }, 10_000);
 
@@ -485,17 +485,17 @@ describe("FinanceiroPage — cancelamento manual", () => {
     expect(screen.getByText("Atalhos:")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Hoje" }));
 
-    expect(screen.getByText("Fornecedor do período")).toBeInTheDocument();
+    expect(screen.getAllByText("Fornecedor do período").length).toBeGreaterThan(0);
     expect(screen.queryByText("Fornecedor fora do período")).not.toBeInTheDocument();
     expect(screen.getAllByText("No resultado pesquisado")).toHaveLength(2);
     expect(screen.getAllByText(/R\$\s*500,00/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/R\$\s*1\.200,00/).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "Últimos 7 dias" }));
-    expect(screen.getByText("Fornecedor do período")).toBeInTheDocument();
+    expect(screen.getAllByText("Fornecedor do período").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Este mês" }));
     await user.click(screen.getAllByRole("button", { name: "Visão financeira: Contas a receber" }).at(-1)!);
-    expect(screen.getByText("Cliente do período")).toBeInTheDocument();
+    expect(screen.getAllByText("Cliente do período").length).toBeGreaterThan(0);
   });
 
   it("pesquisa recebimentos de serragem pela origem e pela data efetiva", async () => {

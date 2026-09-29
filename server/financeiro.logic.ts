@@ -1,3 +1,5 @@
+import { chaveDataFinanceira, diasEntreDatasFinanceiras, hojeFinanceiro } from "../shared/financeiro-data-civil";
+
 export type EstadoTituloFinanceiro = "aberto" | "parcial" | "quitado" | "vencido" | "cancelado";
 export type FrequenciaFinanceira = "semanal" | "mensal" | "trimestral" | "semestral" | "anual";
 export type TipoAlertaFinanceiro = "vence_em_breve" | "vencido";
@@ -45,14 +47,8 @@ export function calcularEstadoTitulo(input: {
   if (valorBaixado >= valorLiquido - CENTAVOS_EPSILON) return "quitado";
   if (valorBaixado > CENTAVOS_EPSILON) return "parcial";
 
-  const agora = input.agora ?? new Date();
-  const inicioDoDia = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  const vencimento = new Date(
-    input.dataVencimento.getFullYear(),
-    input.dataVencimento.getMonth(),
-    input.dataVencimento.getDate(),
-  );
-  return vencimento < inicioDoDia ? "vencido" : "aberto";
+  const vencimento = chaveDataFinanceira(input.dataVencimento);
+  return vencimento && vencimento < hojeFinanceiro(input.agora) ? "vencido" : "aberto";
 }
 
 export function calcularParcelas(valorTotal: string | number, quantidadeParcelas: number): string[] {
@@ -430,17 +426,12 @@ export function classificarAlertaVencimento(input: {
   diasAntecedencia: number;
   agora?: Date;
 }): TipoAlertaFinanceiro | null {
-  if (input.estado === "vencido") return "vencido";
-  if (!["aberto", "parcial"].includes(input.estado)) return null;
+  if (!["aberto", "parcial", "vencido"].includes(input.estado)) return null;
 
-  const agora = input.agora ?? new Date();
-  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  const inicioVencimento = new Date(
-    input.dataVencimento.getFullYear(),
-    input.dataVencimento.getMonth(),
-    input.dataVencimento.getDate(),
-  );
-  const diasRestantes = Math.round((inicioVencimento.getTime() - inicioHoje.getTime()) / 86_400_000);
+  const vencimento = chaveDataFinanceira(input.dataVencimento);
+  if (!vencimento) return null;
+  const diasRestantes = diasEntreDatasFinanceiras(hojeFinanceiro(input.agora), vencimento);
+  if (diasRestantes < 0) return "vencido";
   return diasRestantes >= 0 && diasRestantes <= input.diasAntecedencia ? "vence_em_breve" : null;
 }
 
