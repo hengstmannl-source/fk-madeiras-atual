@@ -1,4 +1,5 @@
 import { decimalParaNumero, saldoAbertoTitulo } from "./financeiro.logic";
+import { chaveDataFinanceira, diasEntreDatasFinanceiras, hojeFinanceiro } from "../shared/financeiro-data-civil";
 
 export type TipoContaOperacional = "receber" | "pagar";
 export type EstadoContaOperacional = "aberto" | "parcial" | "quitado" | "vencido" | "cancelado";
@@ -23,14 +24,9 @@ export type ContaOperacionalCalculada = TituloContaOperacional & {
   faixaAging: FaixaAgingContaOperacional;
 };
 
-function inicioDoDia(data: Date) {
-  const resultado = new Date(data);
-  resultado.setHours(0, 0, 0, 0);
-  return resultado;
-}
-
 export function calcularDiasParaVencimento(dataVencimento: Date, agora = new Date()) {
-  return Math.round((inicioDoDia(dataVencimento).getTime() - inicioDoDia(agora).getTime()) / 86_400_000);
+  const vencimento = chaveDataFinanceira(dataVencimento);
+  return vencimento ? diasEntreDatasFinanceiras(hojeFinanceiro(agora), vencimento) : 0;
 }
 
 export function classificarPrioridadeContaOperacional(input: {

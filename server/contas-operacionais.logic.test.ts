@@ -24,6 +24,13 @@ function tituloBase(overrides: Record<string, unknown> = {}) {
 }
 
 describe("contas operacionais", () => {
+  it("calcula dias até o vencimento por datas civis ao atravessar mês e ano", () => {
+    const agoraUTC = new Date("2025-12-31T12:00:00.000Z");
+    expect(calcularContaOperacional(tituloBase({ dataVencimento: new Date("2025-12-30T00:00:00.000Z") }), agoraUTC).diasParaVencimento).toBe(-1);
+    expect(calcularContaOperacional(tituloBase({ dataVencimento: new Date("2025-12-31T00:00:00.000Z") }), agoraUTC).prioridade).toBe("vence_hoje");
+    expect(calcularContaOperacional(tituloBase({ dataVencimento: new Date("2026-01-01T00:00:00.000Z") }), agoraUTC).diasParaVencimento).toBe(1);
+  });
+
   it("usa exclusivamente o saldo residual do título, inclusive em baixa parcial", () => {
     const conta = calcularContaOperacional(tituloBase({
       estado: "parcial",

@@ -19,18 +19,13 @@ import {
   CircleAlert, CircleDollarSign, Copy, Download, Eye, FileSpreadsheet, Landmark, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, ScanLine, Search, Tags, Trash2, Upload, WalletCards, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { chaveDataFinanceira, hojeFinanceiro, somarDiasFinanceiros } from "@shared/financeiro-data-civil";
 
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => hojeFinanceiro();
 const primeiroDiaDoMes = () => {
-  const data = new Date();
-  data.setDate(1);
-  return data.toISOString().slice(0, 10);
+  return `${hoje().slice(0, 7)}-01`;
 };
-const dataHaDias = (dias: number) => {
-  const data = new Date();
-  data.setDate(data.getDate() - dias);
-  return data.toISOString().slice(0, 10);
-};
+const dataHaDias = (dias: number) => somarDiasFinanceiros(hoje(), -dias);
 
 export function abaFinanceiraDaUrl(search: string): "fluxo" | "lancamentos" | "recorrencias" | "fornecedores" | "categorias" | "contas" | "transferencias" {
   const aba = new URLSearchParams(search).get("aba");
@@ -126,9 +121,7 @@ function formatarDataFinanceira(value: string | Date): string {
 }
 
 function dataChaveFinanceira(value?: string | Date | null): string {
-  if (!value) return "";
-  const data = new Date(value);
-  return Number.isNaN(data.getTime()) ? "" : data.toISOString().slice(0, 10);
+  return chaveDataFinanceira(value) ?? "";
 }
 
 function valorTotalTitulo(titulo: TituloFinanceiro): number {
@@ -422,27 +415,31 @@ export default function FinanceiroPage() {
 
   const resumo = useMemo(() => {
     const dados = titulos.data ?? [];
+    const hoje = hojeFinanceiro();
     return dados.reduce((acumulado, titulo) => {
       if (titulo.estado === "cancelado" || titulo.estado === "quitado") return acumulado;
       const saldo = saldoTitulo(titulo);
       if (titulo.tipo === "receber") acumulado.receber += saldo;
       if (titulo.tipo === "pagar") acumulado.pagar += saldo;
-      if (titulo.estado === "vencido") acumulado.vencidos += saldo;
+      const vencimento = dataChaveFinanceira(titulo.dataVencimento);
+      if (vencimento ? vencimento < hoje : titulo.estado === "vencido") acumulado.vencidos += saldo;
       return acumulado;
     }, { receber: 0, pagar: 0, vencidos: 0 });
   }, [titulos.data]);
 
   const compromissos = useMemo(() => {
-    const hoje = new Date();
-    const limite = new Date();
-    limite.setDate(limite.getDate() + 30);
+    const hoje = hojeFinanceiro();
+    const limite = somarDiasFinanceiros(hoje, 30);
     const emAberto = (titulos.data ?? []).filter((titulo) => !["quitado", "cancelado"].includes(titulo.estado));
     return {
-      vencidos: emAberto.filter((titulo) => titulo.estado === "vencido"),
+      vencidos: emAberto.filter((titulo) => {
+        const vencimento = dataChaveFinanceira(titulo.dataVencimento);
+        return vencimento ? vencimento < hoje : titulo.estado === "vencido";
+      }),
       proximos: emAberto.filter((titulo) => {
-        const vencimento = new Date(titulo.dataVencimento);
-        return vencimento >= hoje && vencimento <= limite;
-      }).sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime()),
+        const vencimento = dataChaveFinanceira(titulo.dataVencimento);
+        return vencimento !== "" && vencimento >= hoje && vencimento <= limite;
+      }).sort((a, b) => dataChaveFinanceira(a.dataVencimento).localeCompare(dataChaveFinanceira(b.dataVencimento))),
     };
   }, [titulos.data]);
 

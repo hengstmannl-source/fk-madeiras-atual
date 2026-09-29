@@ -36,4 +36,14 @@ describe("indicadores financeiros do Dashboard", () => {
     ], new Date("2026-08-13T12:00:00.000Z"));
     expect(resumo.vencido).toBe(0);
   });
+
+  it("classifica vencimentos pelo dia civil e ignora estado vencido desatualizado", () => {
+    const resumo = resumirDashboardFinanceiro([
+      { tipo: "pagar", estado: "aberto", dataVencimento: "2026-08-12T00:00:00.000Z", valorOriginal: "10" },
+      { tipo: "pagar", estado: "vencido", dataVencimento: "2026-08-13T00:00:00.000Z", valorOriginal: "20" },
+      { tipo: "receber", estado: "aberto", dataVencimento: "2026-08-14T00:00:00.000Z", valorOriginal: "30" },
+    ], new Date("2026-08-13T12:00:00.000Z"));
+
+    expect(resumo.vencido).toBe(10);
+  });
 });

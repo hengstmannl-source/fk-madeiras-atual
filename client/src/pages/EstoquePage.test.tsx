@@ -137,19 +137,17 @@ describe("EstoquePage", () => {
   });
 
   it("calcula frete por metro cúbico, totaliza a carga e mantém valores contidos nos cartões", async () => {
-    const user = userEvent.setup();
     render(<EstoquePage />);
 
     expect(screen.getAllByRole("button", { name: "Novo romaneio de carga" })).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "Novo romaneio de carga" }));
-    await user.type(screen.getByPlaceholderText("PLQ-001"), "TOR-0100");
-    await user.type(screen.getByLabelText("Essência 1"), "Piqui");
-    await user.type(screen.getByRole("textbox", { name: "Diâmetro 1" }), "20");
-    await user.type(screen.getByRole("textbox", { name: "Comprimento 1" }), "10");
-    await user.type(screen.getByPlaceholderText("900,00"), "900");
+    fireEvent.click(screen.getByRole("button", { name: "Novo romaneio de carga" }));
+    fireEvent.change(screen.getByPlaceholderText("PLQ-001"), { target: { value: "TOR-0100" } });
+    fireEvent.change(screen.getByLabelText("Essência 1"), { target: { value: "Piqui" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Diâmetro 1" }), { target: { value: "20" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Comprimento 1" }), { target: { value: "10" } });
+    fireEvent.change(screen.getByPlaceholderText("900,00"), { target: { value: "900" } });
     const frete = screen.getByRole("textbox", { name: "Frete por m³ (R$)" });
-    await user.clear(frete);
-    await user.type(frete, "100");
+    fireEvent.change(frete, { target: { value: "100" } });
 
     expect(screen.getAllByText(/0,314/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/282,74/).length).toBeGreaterThan(0);
@@ -160,7 +158,7 @@ describe("EstoquePage", () => {
     expect(screen.getByText("Valor total da carga")).toBeInTheDocument();
     expect(screen.getByLabelText("Vencimento da conta a pagar")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Fornecedor da carga" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Adicionar plaqueta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar plaqueta" }));
     expect(screen.getAllByPlaceholderText("PLQ-001")).toHaveLength(2);
     expect(screen.getByLabelText("Essência 2")).toHaveValue("Piqui");
     expect(screen.getAllByPlaceholderText("900,00")[1]).toHaveValue("900");
@@ -188,16 +186,15 @@ describe("EstoquePage", () => {
     criarCargaMutate.mockImplementationOnce((_entrada, opcoes) => opcoes.onSuccess({ numero: "CARGA-000100", totalPlaquetas: 1 }));
     render(<EstoquePage />);
     await user.click(screen.getByRole("button", { name: "Novo romaneio de carga" }));
-    await user.clear(screen.getByLabelText("Vencimento da conta a pagar"));
-    await user.type(screen.getByLabelText("Vencimento da conta a pagar"), "2026-09-10");
+    fireEvent.change(screen.getByLabelText("Vencimento da conta a pagar"), { target: { value: "2026-09-10" } });
     await user.click(screen.getByRole("combobox", { name: "Fornecedor da carga" }));
     await user.click(screen.getByText("Madeiras Norte"));
-    await user.type(screen.getByPlaceholderText("PLQ-001"), "TOR-0200");
-    await user.type(screen.getByLabelText("Essência 1"), "Cumaru");
-    await user.type(screen.getByRole("textbox", { name: "Diâmetro 1" }), "25");
-    await user.type(screen.getByRole("textbox", { name: "Comprimento 1" }), "6");
-    await user.type(screen.getByPlaceholderText("900,00"), "900");
-    await user.click(screen.getByRole("button", { name: "Confirmar entrada" }));
+    fireEvent.change(screen.getByPlaceholderText("PLQ-001"), { target: { value: "TOR-0200" } });
+    fireEvent.change(screen.getByLabelText("Essência 1"), { target: { value: "Cumaru" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Diâmetro 1" }), { target: { value: "25" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Comprimento 1" }), { target: { value: "6" } });
+    fireEvent.change(screen.getByPlaceholderText("900,00"), { target: { value: "900" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar entrada" }));
     expect(criarCargaMutate).toHaveBeenCalledWith(expect.objectContaining({ dataVencimento: "2026-09-10", fornecedorId: 7 }), expect.any(Object));
   });
 
@@ -208,8 +205,8 @@ describe("EstoquePage", () => {
     await user.click(screen.getByRole("button", { name: "Novo romaneio de carga" }));
     await user.click(screen.getByRole("combobox", { name: "Fornecedor da carga" }));
     await user.click(screen.getByText("Criar novo fornecedor"));
-    await user.type(screen.getByPlaceholderText("Ex.: Fazenda Boa Vista"), "Serraria Campo");
-    await user.click(screen.getByRole("button", { name: "Criar e selecionar" }));
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Fazenda Boa Vista"), { target: { value: "Serraria Campo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Criar e selecionar" }));
     expect(criarFornecedorMutate).toHaveBeenCalledWith({ nome: "Serraria Campo" }, expect.any(Object));
     expect(toast.success).toHaveBeenCalledWith("Fornecedor criado e selecionado.");
   });
