@@ -1,3 +1,5 @@
+// Business-rule unit tests use an explicit server-side company fixture.
+vi.mock("./repositories/identidade", async (importOriginal) => ({ ...await importOriginal<typeof import("./repositories/identidade")>(), getEmpresaUnica: vi.fn(async () => ({ id: 1, ativa: true })) }));
 import { describe, expect, it, vi } from "vitest";
 import { atribuirNumeroVendaAprovada, atualizarDatasOrcamento, cancelarRecebivelDeVendaExcluida, configurarCondicaoPagamentoVenda, entregarVendaFisicamente, formatarNumeroDocumentoPadronizado, listTitulosFinanceiros, updateOrcamentoEstado } from "./db";
 import { formatReceivableSaleReference } from "../client/src/lib/utils";

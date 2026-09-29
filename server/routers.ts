@@ -7,7 +7,8 @@ import { ENV } from "./_core/env";
 import { criarUrlPublica } from "./_core/publicUrl";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { COOKIE_SESSAO_LOCAL, criarSessaoLocal, DURACAO_SESSAO_LOCAL_MS, gerarHashSenha, normalizarEmail, validarSenha } from "./autenticacao-local";
+import { COOKIE_SESSAO_LOCAL, criarSessaoLocal, DURACAO_SESSAO_LOCAL_MS, gerarHashSenha, HASH_SENHA_DUMMY, normalizarEmail, validarSenha } from "./autenticacao-local";
+import { limparFalhasCredencial, registrarFalhaCredencial } from "./_core/loginCredentialBackoff";
 import * as db from "./db";
 import { madeiraRouter } from "./routers/madeira";
 import { bitolaRouter } from "./routers/bitola";
@@ -20,30 +21,33 @@ import { producaoRouter } from "./routers/producao";
 import { dieselRouter } from "./routers/diesel";
 import { rhRouter } from "./routers/rh";
 import { custosGerenciaisRouter } from "./routers/custosGerenciais";
+import { publicUser } from "./_core/publicUser";
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => publicUser(opts.ctx.user)),
     contexto: protectedProcedure.query(async ({ ctx }) => ({
-      usuario: ctx.user,
+      usuario: publicUser(ctx.user),
       empresa: ctx.configuracaoEmpresa,
       papel: ctx.user.papel,
     })),
     entrar: publicProcedure
-      .input(z.object({ email: z.string().email(), senha: z.string().min(1).max(200) }))
+      .input(z.object({ email: z.string().trim().email().max(320), senha: z.string().min(1).max(200) }))
       .mutation(async ({ ctx, input }) => {
         const emailNormalizado = normalizarEmail(input.email);
         const acesso = await db.getCredencialPorEmail(emailNormalizado);
         const erroPadrao = new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos." });
-        if (!acesso || (acesso.credencial.bloqueadoAte && acesso.credencial.bloqueadoAte > new Date())) throw erroPadrao;
-        if (!(await validarSenha(input.senha, acesso.credencial.senhaHash))) {
-          const proximaTentativa = acesso.credencial.tentativasFalhas + 1;
-          await db.registrarFalhaAutenticacao(acesso.credencial.id, proximaTentativa >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null);
+        const senhaValida = await validarSenha(input.senha, acesso?.credencial.senhaHash ?? HASH_SENHA_DUMMY);
+        if (!acesso || !senhaValida) {
+          if (acesso) await db.registrarFalhaAutenticacao(acesso.credencial.id);
+          const atraso = registrarFalhaCredencial(emailNormalizado);
+          await new Promise(resolve => setTimeout(resolve, atraso));
           throw erroPadrao;
         }
         if (!acesso.usuario.papel) throw new TRPCError({ code: "FORBIDDEN", message: "O utilizador não possui um perfil operacional ativo." });
         await db.limparFalhasAutenticacao(acesso.credencial.id);
+        limparFalhasCredencial(emailNormalizado);
         const token = criarSessaoLocal(acesso.usuario.id);
         ctx.res.cookie(COOKIE_SESSAO_LOCAL, token, { ...getSessionCookieOptions(ctx.req), maxAge: DURACAO_SESSAO_LOCAL_MS });
         return { success: true, empresa: ctx.configuracaoEmpresa, papel: acesso.usuario.papel };

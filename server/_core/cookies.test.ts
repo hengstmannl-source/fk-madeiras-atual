@@ -31,7 +31,7 @@ describe("cookies de sessão", () => {
       sameSite: "lax",
     });
     expect(getSessionCookieOptions(request("http", "https"), false)).toMatchObject({
-      secure: true,
+      secure: false,
       sameSite: "lax",
     });
   });

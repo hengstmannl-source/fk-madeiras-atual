@@ -44,10 +44,12 @@ type AtualizacaoCabecalhoProducao = Partial<typeof romaneiosProducao.$inferInser
 
 // ─── Tanque de diesel ───
 async function getOrCreateCategoriaPagamentoDiesel(tx: any, userId: number): Promise<number> {
+  const empresaId = (await getEmpresaUnica()).id;
   const existente = await tx.select().from(categoriasFinanceiras)
-    .where(and(eq(categoriasFinanceiras.nome, "Pagamento de nota de diesel"), eq(categoriasFinanceiras.ativo, true))).limit(1);
+    .where(and(and(eq(categoriasFinanceiras.nome, "Pagamento de nota de diesel"), eq(categoriasFinanceiras.ativo, true)), eq(categoriasFinanceiras.empresaId, empresaId))).limit(1);
   if (existente[0]) return existente[0].id;
   const resultado = await tx.insert(categoriasFinanceiras).values({
+    empresaId,
     nome: "Pagamento de nota de diesel",
     tipo: "despesa",
     ativo: true,

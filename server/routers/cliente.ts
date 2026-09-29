@@ -7,12 +7,12 @@ const chaveTexto = (valor?: string | null) => String(valor ?? "").trim().replace
 const chaveDocumento = (valor?: string | null) => String(valor ?? "").replace(/\D/g, "");
 const LinhaImportacaoSchema = z.object({
   linha: z.number().int().positive(),
-  nome: z.string().trim(),
-  contacto: z.string().optional().default(""),
-  email: z.string().optional().default(""),
-  morada: z.string().optional().default(""),
-  nif: z.string().optional().default(""),
-  observacoes: z.string().optional().default(""),
+  nome: z.string().max(300).trim(),
+  contacto: z.string().max(4000).optional().default(""),
+  email: z.string().max(4000).optional().default(""),
+  morada: z.string().max(4000).optional().default(""),
+  nif: z.string().max(4000).optional().default(""),
+  observacoes: z.string().max(4000).optional().default(""),
 });
 type LinhaImportacao = z.infer<typeof LinhaImportacaoSchema>;
 
@@ -63,12 +63,12 @@ export const clienteRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      nome: z.string().min(1, "Nome é obrigatório"),
-      contacto: z.string().optional(),
-      email: z.string().optional(),
-      morada: z.string().optional(),
-      nif: z.string().optional(),
-      observacoes: z.string().optional(),
+      nome: z.string().max(300).min(1, "Nome é obrigatório"),
+      contacto: z.string().max(4000).optional(),
+      email: z.string().max(4000).optional(),
+      morada: z.string().max(4000).optional(),
+      nif: z.string().max(4000).optional(),
+      observacoes: z.string().max(4000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const empresaId = (await db.getEmpresaUnica()).id;
@@ -107,13 +107,13 @@ export const clienteRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      nome: z.string().min(1),
-      contacto: z.string().optional(),
-      email: z.string().optional(),
-      morada: z.string().optional(),
-      nif: z.string().optional(),
-      observacoes: z.string().optional(),
+      id: z.number().int().positive(),
+      nome: z.string().max(300).min(1),
+      contacto: z.string().max(4000).optional(),
+      email: z.string().max(4000).optional(),
+      morada: z.string().max(4000).optional(),
+      nif: z.string().max(4000).optional(),
+      observacoes: z.string().max(4000).optional(),
     }))
     .mutation(async ({ input }) => {
       await db.updateCliente(input.id, {
@@ -124,7 +124,7 @@ export const clienteRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       await db.deleteCliente(input.id);
       return { success: true };

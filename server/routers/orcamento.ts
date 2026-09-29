@@ -1,23 +1,24 @@
+import { dataCalendarioValida } from "../../shared/validacaoData";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 
 export const ItemSchema = z.object({
-  madeiraId: z.number().nullable().optional(),
-  bitolaId: z.number().nullable().optional(),
+  madeiraId: z.number().int().positive().nullable().optional(),
+  bitolaId: z.number().int().positive().nullable().optional(),
   produtoComercialId: z.number().int().positive().nullable().optional(),
-  madeiraNome: z.string(),
-  bitolaDescricao: z.string(),
-  espessura: z.string(),
-  largura: z.string(),
-  comprimento: z.string(),
+  madeiraNome: z.string().max(300),
+  bitolaDescricao: z.string().max(300),
+  espessura: z.string().max(40),
+  largura: z.string().max(40),
+  comprimento: z.string().max(40),
   quantidade: z.number().int().positive("Informe uma quantidade inteira positiva"),
   tipoComercializacao: z.enum(["metro_cubico", "unidade", "pacote"]).default("metro_cubico"),
   unidadesPorComercializacao: z.number().int().min(0, "Informe a composição do pacote com zero ou mais unidades").default(1),
-  precoM3: z.string(),
-  precoLinear: z.string(),
-  valorPeca: z.string(),
-  valorTotal: z.string(),
+  precoM3: z.string().max(40),
+  precoLinear: z.string().max(40),
+  valorPeca: z.string().max(40),
+  valorTotal: z.string().max(40),
   componentesPacote: z.array(z.object({
     descricao: z.string().trim().min(2, "Informe a descrição da peça").max(240),
     madeiraNome: z.string().trim().max(200).nullable().optional(),
@@ -26,7 +27,7 @@ export const ItemSchema = z.object({
     comprimento: z.string().trim().max(30).nullable().optional(),
     quantidade: z.number().int().positive("Informe a quantidade da peça"),
   })).max(60).default([]),
-  orcamentoId: z.number().optional(),
+  orcamentoId: z.number().int().positive().optional(),
 }).superRefine((item, ctx) => {
   if (item.tipoComercializacao === "pacote" && item.componentesPacote.length === 0) {
     ctx.addIssue({ code: "custom", path: ["componentesPacote"], message: "Informe ao menos uma peça que compõe o pacote" });
@@ -44,50 +45,50 @@ export const FormaPagamentoSchema = z.enum([
 ]);
 
 export const RegistroPagamentoSchema = z.object({
-  id: z.number(),
+  id: z.number().int().positive(),
   formaPagamento: FormaPagamentoSchema.default("outro"),
-  pagoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data de pagamento válida").default(() => new Date().toISOString().slice(0, 10)),
+  pagoEm: z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data de pagamento válida").default(() => new Date().toISOString().slice(0, 10)),
 });
 
 export const CondicaoPagamentoVendaSchema = z.object({
   id: z.number().int().positive(),
   parcelas: z.array(z.object({
-    dataVencimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data de vencimento válida"),
+    dataVencimento: z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data de vencimento válida"),
   })).min(1, "Informe ao menos uma parcela").max(24, "A condição de pagamento suporta no máximo 24 parcelas"),
 });
 
 const BaixaAproveitamentoSchema = z.object({
   madeiraNome: z.string().trim().min(2, "Informe a essência do aproveitamento").max(200),
-  volume: z.union([z.string(), z.number()])
+  volume: z.union([z.string().max(4000), z.number()])
     .transform((valor) => String(valor).replace(",", "."))
-    .refine((valor) => Number(valor) > 0, "Informe um volume de aproveitamento positivo"),
+    .refine((valor) => Number.isFinite(Number(valor)) && Number(valor) > 0, "Informe um volume de aproveitamento positivo"),
 });
 
 export const AproveitamentoVendaSchema = BaixaAproveitamentoSchema.extend({
-  precoM3: z.union([z.string(), z.number()])
+  precoM3: z.union([z.string().max(4000), z.number()])
     .transform((valor) => String(valor).replace(",", "."))
-    .refine((valor) => Number(valor) >= 0, "Informe um preço por m³ válido"),
+    .refine((valor) => Number.isFinite(Number(valor)) && Number(valor) >= 0, "Informe um preço por m³ válido"),
 });
 
 export const TaxaAdicionalVendaSchema = z.object({
   descricao: z.string().trim().min(2, "Informe a descrição da taxa").max(120),
   tipo: z.enum(["percentual", "fixo"]),
-  valor: z.string().trim().min(1, "Informe o valor da taxa")
+  valor: z.string().max(4000).trim().min(1, "Informe o valor da taxa")
     .transform((valor) => valor.replace(",", "."))
-    .refine((valor) => Number.isFinite(Number(valor)) && Number(valor) >= 0, "Informe um valor de taxa válido"),
+    .refine((valor) => Number.isFinite(Number(valor)) && Number.isFinite(Number(valor)) && Number(valor) >= 0, "Informe um valor de taxa válido"),
 });
 
 export const RegistroEntregaFisicaSchema = z.object({
   id: z.number().int().positive(),
-  entregueEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida"),
+  entregueEm: z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida"),
   modalidadeEntrega: z.enum(["retirada", "entrega"]),
   responsavelEntrega: z.string().trim().min(2, "Informe o responsável pela entrega").max(200),
   observacoesEntrega: z.string().trim().max(4000).optional(),
   aproveitamentos: z.array(BaixaAproveitamentoSchema).max(30).default([]),
 });
 
-const DataFinanceiraSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida");
-const LinhaModeloSchema = z.object({ comprimento: z.string().trim().min(1), quantidade: z.string().trim().min(1) });
+const DataFinanceiraSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
+const LinhaModeloSchema = z.object({ comprimento: z.string().max(40).trim().min(1), quantidade: z.string().max(4000).trim().min(1) });
 const ComponenteProdutoSchema = z.object({
   descricao: z.string().trim().min(2, "Informe a descrição da peça").max(240),
   madeiraNome: z.string().trim().max(200).nullable().optional(),
@@ -99,7 +100,7 @@ const ComponenteProdutoSchema = z.object({
 const ProdutoComercialBaseSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome do produto").max(200),
   tipoComercializacao: z.enum(["unidade", "pacote"]),
-  precoPadrao: z.union([z.string(), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number(valor) >= 0, "Informe um preço válido"),
+  precoPadrao: z.union([z.string().max(4000), z.number()]).transform((valor) => String(valor).replace(",", ".")).refine((valor) => Number.isFinite(Number(valor)) && Number(valor) >= 0, "Informe um preço válido"),
   observacoes: z.string().trim().max(4000).nullable().optional(),
   componentes: z.array(ComponenteProdutoSchema).max(60).default([]),
 });
@@ -150,7 +151,7 @@ export const orcamentoRouter = router({
   list: protectedProcedure
     .input(z.object({
       estado: z.enum(["rascunho", "enviado", "aprovado", "rejeitado"]).optional(),
-      clienteId: z.number().optional(),
+      clienteId: z.number().int().positive().optional(),
       categoria: z.enum(["aprovadas", "pagas", "entregues", "concluidas"]).optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
@@ -164,7 +165,7 @@ export const orcamentoRouter = router({
     .query(({ ctx }) => db.getRelatorioMargemVendas()),
 
   get: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.number().int().positive() }))
     .query(async ({ ctx, input }) => {
       return db.getOrcamentoWithItems(input.id);
     }),
@@ -179,32 +180,32 @@ export const orcamentoRouter = router({
 
   create: protectedProcedure
     .input(z.object({
-      clienteId: z.number(),
+      clienteId: z.number().int().positive(),
       estado: z.enum(["rascunho", "enviado", "aprovado", "rejeitado"]).default("rascunho"),
-      desconto: z.string().default("0"),
-      frete: z.string().default("0"),
-      fretePorTonelada: z.string().default("0"),
-      pesoCargaToneladas: z.string().default("0"),
-      abatimentoFrete: z.string().default("0"),
-      baseAposFrete: z.string().default("0"),
+      desconto: z.string().max(4000).default("0"),
+      frete: z.string().max(4000).default("0"),
+      fretePorTonelada: z.string().max(4000).default("0"),
+      pesoCargaToneladas: z.string().max(4000).default("0"),
+      abatimentoFrete: z.string().max(4000).default("0"),
+      baseAposFrete: z.string().max(4000).default("0"),
       comissaoTipo: z.enum(["percentual", "fixo"]).default("percentual"),
-      comissaoValor: z.string().default("0"),
-      comissaoCalculada: z.string().default("0"),
+      comissaoValor: z.string().max(4000).default("0"),
+      comissaoCalculada: z.string().max(4000).default("0"),
       taxaDescricao: z.string().max(120).optional(),
       taxaTipo: z.enum(["percentual", "fixo"]).default("percentual"),
-      taxaValor: z.string().default("0"),
-      taxaCalculada: z.string().default("0"),
+      taxaValor: z.string().max(4000).default("0"),
+      taxaCalculada: z.string().max(4000).default("0"),
       taxasAdicionais: z.array(TaxaAdicionalVendaSchema).max(20).default([]),
-      subtotal: z.string(),
-      total: z.string(),
+      subtotal: z.string().max(4000),
+      total: z.string().max(4000),
       totalPecas: z.number(),
-      totalMetroLinear: z.string(),
-      totalVolume: z.string(),
-      observacoes: z.string().optional(),
-      vendedor: z.string().optional(),
+      totalMetroLinear: z.string().max(4000),
+      totalVolume: z.string().max(4000),
+      observacoes: z.string().max(4000).optional(),
+      vendedor: z.string().max(300).optional(),
       dataVencimento: DataFinanceiraSchema.optional(),
       competencia: DataFinanceiraSchema.optional(),
-      itens: z.array(ItemSchema),
+      itens: z.array(ItemSchema).max(2000),
       aproveitamentos: z.array(AproveitamentoVendaSchema).max(30).default([]),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -264,7 +265,7 @@ export const orcamentoRouter = router({
 
   updateEstado: protectedProcedure
     .input(z.object({
-      id: z.number(),
+      id: z.number().int().positive(),
       estado: z.enum(["rascunho", "enviado", "aprovado", "rejeitado"]),
       confirmacaoDupla: z.boolean().default(false),
     }))
@@ -279,7 +280,7 @@ export const orcamentoRouter = router({
 
   atualizarDatas: protectedProcedure
     .input(z.object({
-      id: z.number(),
+      id: z.number().int().positive(),
       dataVencimento: DataFinanceiraSchema,
       competencia: DataFinanceiraSchema,
       confirmacaoDupla: z.boolean().default(false),
@@ -304,7 +305,7 @@ export const orcamentoRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number(), confirmacaoDupla: z.boolean().default(false) }))
+    .input(z.object({ id: z.number().int().positive(), confirmacaoDupla: z.boolean().default(false) }))
     .mutation(async ({ ctx, input }) => {
       await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
       await db.deleteOrcamento(input.id, input.confirmacaoDupla, ctx.user.id);
@@ -333,7 +334,7 @@ export const orcamentoRouter = router({
     }),
 
   estornarEntrega: protectedProcedure
-    .input(z.object({ id: z.number().int().positive(), motivo: z.string().trim().min(3, "Informe o motivo do estorno") }))
+    .input(z.object({ id: z.number().int().positive(), motivo: z.string().max(4000).trim().min(3, "Informe o motivo do estorno") }))
     .mutation(async ({ ctx, input }) => {
       await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
       return db.estornarEntregaVenda(input.id, ctx.user.id, input.motivo);
@@ -351,10 +352,10 @@ export const orcamentoRouter = router({
       nome: z.string().trim().min(2).max(120),
       madeiraId: z.number().int().positive().nullable(),
       madeiraNome: z.string().trim().min(2).max(200),
-      precoM3: z.string().trim().min(1),
-      espessuraCm: z.string().trim().min(1),
-      larguraCm: z.string().trim().min(1),
-      comprimentos: z.array(LinhaModeloSchema).min(1),
+      precoM3: z.string().max(40).trim().min(1),
+      espessuraCm: z.string().max(4000).trim().min(1),
+      larguraCm: z.string().max(4000).trim().min(1),
+      comprimentos: z.array(LinhaModeloSchema).max(2000).min(1),
     })).mutation(async ({ ctx, input }) => {
       const id = await db.createModeloMedidaVenda({
         ...input,
@@ -369,7 +370,7 @@ export const orcamentoRouter = router({
   }),
 
   duplicate: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
       return db.duplicateOrcamento(input.id);

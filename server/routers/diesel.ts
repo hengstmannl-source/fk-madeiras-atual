@@ -1,11 +1,12 @@
+import { dataCalendarioValida } from "../../shared/validacaoData";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 
-const DataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida");
-const DecimalPositivo = z.union([z.string(), z.number()])
+const DataSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
+const DecimalPositivo = z.union([z.string().max(4000), z.number()])
   .transform((valor) => String(valor).replace(",", "."))
-  .refine((valor) => Number(valor) > 0, "Informe um valor positivo");
+  .refine((valor) => Number.isFinite(Number(valor)) && Number(valor) > 0, "Informe um valor positivo");
 
 function dataLocal(data: string): Date {
   const [ano, mes, dia] = data.split("-").map(Number);

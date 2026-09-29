@@ -4,7 +4,7 @@
 
 O projeto já utiliza `DATABASE_URL` para conectar ao MySQL/TiDB e o servidor escuta a porta definida por `PORT`, usando `3000` como padrão. O build atual gera os arquivos React em `dist/public` e o servidor compilado em `dist/index.js`.
 
-A autenticação própria já está parcialmente implementada no projeto. Existem login por e-mail e senha, sessão assinada no cookie `fk_sessao_local`, convites de colaboradores, criação de senha, hash com `scrypt`, bloqueio após tentativas falhas e recuperação associada às tabelas de identidade. Atualmente, o contexto tenta primeiro a sessão local e depois ainda permite autenticação Manus como fallback.
+A autenticação própria já está parcialmente implementada no projeto. Existem login por e-mail e senha, sessão assinada no cookie `fk_sessao_local`, convites de colaboradores, criação e verificação de senha com `scrypt` e recuperação associada às tabelas de identidade. Senhas incorretas não bloqueiam persistentemente a conta: o login usa rate limiting por IP e backoff progressivo, limitado a 2 segundos, por e-mail normalizado. E-mails inexistentes recebem tratamento equivalente com `scrypt` e hash sintético. Falhas de contas existentes são contabilizadas no banco, mas uma senha correta continua podendo autenticar e um login bem-sucedido limpa o estado de falhas. O rate limiter e o backoff são locais ao processo e não constituem proteção global contra tentativas distribuídas ou múltiplas instâncias. Atualmente, o contexto tenta primeiro a sessão local e depois ainda permite autenticação Manus como fallback.
 
 Portanto, a migração não deve começar criando outro sistema de login. O caminho seguro é terminar a desativação do fallback Manus depois de validar a autenticação local.
 

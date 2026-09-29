@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
+import { MySqlDialect } from "drizzle-orm/mysql-core";
+
+vi.mock("../repositories/core", () => ({ getDb: async () => ({ select: () => ({ from: () => ({ where: (condition: any) => {
+  const query = new MySqlDialect().sqlToQuery(condition);
+  expect(query.sql).toContain("`empresaId`");
+  expect(query.params[0]).toBe(1);
+  return Promise.resolve(query.params.slice(1).map(id => ({ id })));
+} }) }) }) }));
 
 vi.mock("../db", () => ({
   importarExtratoBancario: vi.fn(),

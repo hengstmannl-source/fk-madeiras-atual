@@ -4,18 +4,18 @@ import * as db from "../db";
 
 export const bitolaRouter = router({
   list: protectedProcedure
-    .input(z.object({ madeiraId: z.number().optional() }).optional())
+    .input(z.object({ madeiraId: z.number().int().positive().optional() }).optional())
     .query(async ({ input }) => {
       return db.listBitolas(input?.madeiraId);
     }),
 
   create: protectedProcedure
     .input(z.object({
-      madeiraId: z.number(),
-      espessura: z.string().min(1),
-      largura: z.string().min(1),
-      comprimento: z.string().optional(),
-      descricao: z.string().optional(),
+      madeiraId: z.number().int().positive(),
+      espessura: z.string().max(40).min(1),
+      largura: z.string().max(40).min(1),
+      comprimento: z.string().max(40).optional(),
+      descricao: z.string().max(4000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const empresaId = (await db.getEmpresaUnica()).id;
@@ -25,12 +25,12 @@ export const bitolaRouter = router({
 
   update: protectedProcedure
     .input(z.object({
-      id: z.number(),
-      madeiraId: z.number(),
-      espessura: z.string(),
-      largura: z.string(),
-      comprimento: z.string().optional(),
-      descricao: z.string().optional(),
+      id: z.number().int().positive(),
+      madeiraId: z.number().int().positive(),
+      espessura: z.string().max(40),
+      largura: z.string().max(40),
+      comprimento: z.string().max(40).optional(),
+      descricao: z.string().max(4000).optional(),
     }))
     .mutation(async ({ input }) => {
       await db.updateBitola(input.id, {
@@ -41,7 +41,7 @@ export const bitolaRouter = router({
     }),
 
   delete: protectedProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       await db.deleteBitola(input.id);
       return { success: true };

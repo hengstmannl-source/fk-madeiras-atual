@@ -1,0 +1,6 @@
+
+> fk-madeiras-frontend@1.0.0 check C:\Users\LEONARDO\OneDrive\Desktop\fk-madeiras-atual
+> tsc --noEmit
+
+
+Exit code: 0

@@ -70,8 +70,8 @@ export async function obterResumoRentabilidadeFinanceira(competencia: Date) {
   const [titulos, abastecimentos, producoes, volumesPecasPorEssencia, aproveitamentosPorEssencia, torasConsumidas, referenciasPreco, semCentro, semCompetencia, notasDieselExcluidas, titulosRomaneioExcluidos] = await Promise.all([
     db.select({ titulo: titulosFinanceiros, centro: centrosCustosGerenciais, categoria: categoriasFinanceiras })
       .from(titulosFinanceiros)
-      .innerJoin(centrosCustosGerenciais, eq(titulosFinanceiros.centroCustoId, centrosCustosGerenciais.id))
-      .innerJoin(categoriasFinanceiras, eq(titulosFinanceiros.categoriaId, categoriasFinanceiras.id))
+      .innerJoin(centrosCustosGerenciais, and(eq(titulosFinanceiros.centroCustoId, centrosCustosGerenciais.id), eq(centrosCustosGerenciais.empresaId, empresaId)))
+      .innerJoin(categoriasFinanceiras, and(eq(titulosFinanceiros.categoriaId, categoriasFinanceiras.id), eq(categoriasFinanceiras.empresaId, empresaId)))
       .where(and(
         eq(titulosFinanceiros.empresaId, empresaId),
         eq(titulosFinanceiros.tipo, "pagar"),
@@ -81,7 +81,7 @@ export async function obterResumoRentabilidadeFinanceira(competencia: Date) {
       )),
     db.select({ abastecimento: abastecimentosDiesel, centro: centrosCustosGerenciais })
       .from(abastecimentosDiesel)
-      .innerJoin(centrosCustosGerenciais, eq(abastecimentosDiesel.centroCustoId, centrosCustosGerenciais.id))
+      .innerJoin(centrosCustosGerenciais, and(eq(abastecimentosDiesel.centroCustoId, centrosCustosGerenciais.id), eq(centrosCustosGerenciais.empresaId, empresaId)))
       .where(and(
         eq(abastecimentosDiesel.empresaId, empresaId),
         gte(abastecimentosDiesel.dataAbastecimento, inicio),

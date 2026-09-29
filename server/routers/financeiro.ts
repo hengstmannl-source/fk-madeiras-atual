@@ -1,4 +1,6 @@
+import { dataCalendarioValida } from "../../shared/validacaoData";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
 import * as centrosCusto from "../repositories/centrosCusto";
@@ -11,7 +13,7 @@ export const TipoTituloSchema = z.enum(["receber", "pagar"]);
 export const FormaPagamentoFinanceiraSchema = z.enum([
   "pix", "dinheiro", "cheque", "cartao_credito", "cartao_debito", "transferencia", "boleto", "outro",
 ]);
-export const DataFinanceiraSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida");
+export const DataFinanceiraSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
 const FormatoExtratoBancarioSchema = z.enum(["csv", "ofx"]);
 const EstadoMovimentoBancarioSchema = z.enum(["pendente", "conciliado", "ignorado", "divergente"]);
 
@@ -49,17 +51,17 @@ function nomeSeguroAnexo(nome: string) {
 
 export const LancamentoManualSchema = z.object({
   tipo: TipoTituloSchema,
-  descricao: z.string().trim().min(2, "Informe uma descrição"),
+  descricao: z.string().max(4000).trim().min(2, "Informe uma descrição"),
   categoriaId: z.number().int().positive(),
   centroCustoId: z.number().int().positive().nullable().optional(),
-  valorOriginal: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/, "Informe um valor válido"),
+  valorOriginal: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/, "Informe um valor válido"),
   dataEmissao: DataFinanceiraSchema,
   dataVencimento: DataFinanceiraSchema,
   clienteId: z.number().int().positive().nullable().optional(),
   fornecedorId: z.number().int().positive().nullable().optional(),
   contraparteNome: z.string().trim().max(300).nullable().optional(),
-  desconto: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/).optional(),
-  juros: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/).optional(),
+  desconto: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/).optional(),
+  juros: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/).optional(),
   observacoes: z.string().max(4000).nullable().optional(),
 });
 
@@ -109,14 +111,14 @@ export const ContaSchema = z.object({
   agencia: z.string().trim().max(40).nullable().optional(),
   numeroConta: z.string().trim().max(60).nullable().optional(),
   dataInicio: DataFinanceiraSchema.nullable().optional(),
-  saldoInicial: z.string().regex(/^-?\d+(?:[.,]\d{1,2})?$/).default("0"),
+  saldoInicial: z.string().max(4000).regex(/^-?\d+(?:[.,]\d{1,2})?$/).default("0"),
   observacoes: z.string().max(4000).nullable().optional(),
 });
 
 export const TransferenciaFinanceiraSchema = z.object({
   contaOrigemId: z.number().int().positive(),
   contaDestinoId: z.number().int().positive(),
-  valor: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/, "Informe um valor válido"),
+  valor: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/, "Informe um valor válido"),
   dataTransferencia: DataFinanceiraSchema,
   descricao: z.string().trim().max(300).nullable().optional(),
   observacoes: z.string().max(4000).nullable().optional(),
@@ -131,7 +133,7 @@ export const RecorrenciaSchema = z.object({
   clienteId: z.number().int().positive().nullable().optional(),
   fornecedorId: z.number().int().positive().nullable().optional(),
   contraparteNome: z.string().trim().max(300).nullable().optional(),
-  valor: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/, "Informe um valor válido"),
+  valor: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/, "Informe um valor válido"),
   frequencia: z.enum(["semanal", "mensal", "trimestral", "semestral", "anual"]),
   proximoVencimento: DataFinanceiraSchema,
   dataFim: DataFinanceiraSchema.nullable().optional(),
@@ -454,13 +456,13 @@ export const financeiroRouter = router({
     baixar: protectedProcedure.input(z.object({
       tituloId: z.number().int().positive(),
       contaFinanceiraId: z.number().int().positive(),
-      valor: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/),
+      valor: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/),
       dataBaixa: DataFinanceiraSchema,
       formaPagamento: FormaPagamentoFinanceiraSchema,
       observacoes: z.string().max(4000).optional(),
       chequesRecebidos: z.array(z.object({
         referencia: z.string().trim().min(1).max(120),
-        valor: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/),
+        valor: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/),
         clienteId: z.number().int().positive().optional(),
         dataCompensacao: DataFinanceiraSchema.optional(),
       })).min(1).max(100).optional(),
@@ -512,6 +514,9 @@ export const financeiroRouter = router({
       const bytes = Buffer.from(input.base64, "base64");
       if (!bytes.length || bytes.length !== input.tamanhoBytes || !assinaturaValidaAnexo(input.mimeType, bytes)) {
         throw new Error("O conteúdo do arquivo não corresponde ao formato informado.");
+      }
+      if (!(await db.getTituloFinanceiroById(input.tituloId))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Lançamento financeiro não encontrado." });
       }
       const armazenado = await storagePut(
         `financeiro/titulo-${input.tituloId}/${Date.now()}-${nomeSeguroAnexo(input.nomeArquivo)}`,

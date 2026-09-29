@@ -7,8 +7,8 @@ services:
     environment:
       MYSQL_DATABASE: fkmadeiras
       MYSQL_USER: fk_madeiras
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?defina MYSQL_PASSWORD no .env.docker}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina MYSQL_ROOT_PASSWORD no .env.docker}
+      MYSQL_PASSWORD: ${FK_MYSQL_PASSWORD:?Configure FK_MYSQL_PASSWORD no arquivo local de ambiente}
+      MYSQL_ROOT_PASSWORD: ${FK_MYSQL_ROOT_PASSWORD:?Configure FK_MYSQL_ROOT_PASSWORD no arquivo local de ambiente}
     ports:
       - "3307:3306"
     volumes:
@@ -34,7 +34,7 @@ services:
       NODE_ENV: production
       PUBLIC_BASE_URL: http://localhost:3000
       PORT: 3000
-      DATABASE_URL: mysql://fk_madeiras:${MYSQL_PASSWORD}@mysql:3306/fkmadeiras
+      DATABASE_URL: ${FK_DOCKER_DATABASE_URL:?Configure FK_DOCKER_DATABASE_URL para o host mysql}
     ports:
       - "3000:3000"
 

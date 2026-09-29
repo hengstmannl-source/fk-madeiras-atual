@@ -1,0 +1,191 @@
+
+> fk-madeiras-frontend@1.0.0 test C:\Users\LEONARDO\OneDrive\Desktop\fk-madeiras-atual
+> vitest run "--maxWorkers=2" "--minWorkers=1"
+
+
+ RUN  v2.1.9 C:/Users/LEONARDO/OneDrive/Desktop/fk-madeiras-atual
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > pede confirmação e remove o título da listagem após confirmar a exclusão
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > permite reagendar o vencimento de uma conta vinculada ao romaneio de carga
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > confirma o estorno com motivo e sinaliza a baixa preservada como estornada
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > confirma o estorno com motivo e sinaliza a baixa preservada como estornada
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+ ✓ client/src/pages/ProducaoPage.test.tsx (23 tests) 18921ms
+   ✓ ProducaoPage > apresenta somente a produção diária e orienta o uso prévio do Estoque 471ms
+   ✓ ProducaoPage > oferece a serragem de terceiros no mesmo fluxo em duas etapas da produção diária 336ms
+   ✓ ProducaoPage > calcula o volume das toras de terceiros, mostra a cobrança por m³ e repete a última essência 2204ms
+   ✓ ProducaoPage > usa a mesma grade padrão de comprimentos editáveis da produção diária 3233ms
+   ✓ ProducaoPage > permite avançar ao romaneio de peças sem informar a plaqueta da tora de terceiro 1567ms
+   ✓ ProducaoPage > permite criar um cliente diretamente no seletor de serragem 418ms
+   ✓ ProducaoPage > abre a serragem de terceiros para edição e envia a atualização do preço e das peças 815ms
+   ✓ ProducaoPage > adiciona a tora por digitação da plaqueta, permite conferir o resultado consolidado e disponibiliza o PDF 1105ms
+   ✓ ProducaoPage > localiza por consulta direta a plaqueta existente que não está na lista limitada 574ms
+   ✓ ProducaoPage > permite preparar uma nova plaqueta digitada para entrada e consumo imediato 721ms
+   ✓ ProducaoPage > seleciona uma tora sem plaqueta física já existente no estoque sem criar nova identificação 540ms
+   ✓ ProducaoPage > não preenche automaticamente as medidas quando a plaqueta física está duplicada 875ms
+   ✓ ProducaoPage > oferece a importação de plaquetas por planilha dentro do romaneio 383ms
+   ✓ ProducaoPage > adiciona múltiplos comprimentos em uma grade e mantém a medida para o próximo lançamento 2542ms
+   ✓ ProducaoPage > oferece a importação de peças serradas por planilha na etapa de bitolas 1269ms
+   ✓ ProducaoPage > permite selecionar romaneios e abrir a alteração coletiva somente de cabeçalho 321ms
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > abre a edição pela descrição e mantém a categoria de receita da venda
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > oferece modelo, exportação e importação CSV com orientação de validação
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > permite preparar documentos e conferir a linha digitável em um lançamento a pagar
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > copia o código do boleto e pré-visualiza o PDF anexado ao agendamento
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > copia o código do boleto e pré-visualiza o PDF anexado ao agendamento
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+ ✓ client/src/pages/EstoquePage.test.tsx (17 tests) 10070ms
+   ✓ EstoquePage > mantém Toras e Serrado em categorias próprias e oferece ações administrativas 439ms
+   ✓ EstoquePage > filtra o estoque serrado por essência, espessura, largura e comprimento 819ms
+   ✓ EstoquePage > calcula frete por metro cúbico, totaliza a carga e mantém valores contidos nos cartões 2232ms
+   ✓ EstoquePage > oferece uma grade de romaneio e cria a próxima linha pelo teclado mantendo essência e preço 1001ms
+   ✓ EstoquePage > envia fornecedor e vencimento para a conta a pagar automática da carga 1761ms
+   ✓ EstoquePage > permite criar um fornecedor diretamente no seletor da carga 1235ms
+   ✓ EstoquePage > pesquisa plaquetas e navega em blocos de dez itens 581ms
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > seleciona títulos e envia uma alteração parcial em lote
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > permite criar um Centro de Custo no contexto e aplicá-lo em lote sem duplicar a rentabilidade
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > permite criar um Centro de Custo no contexto e aplicá-lo em lote sem duplicar a rentabilidade
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+ ✓ client/src/pages/OrcamentosAprovadosPage.test.tsx (6 tests) 2909ms
+   ✓ OrcamentosAprovadosPage — entrega física independente > registra a baixa física de uma venda paga com os dados operacionais da entrega 1021ms
+   ✓ OrcamentosAprovadosPage — entrega física independente > permite baixar aproveitamento por essência junto à entrega física 916ms
+   ✓ OrcamentosAprovadosPage — entrega física independente > configura vencimentos parcelados por prazo ao clicar no cliente da venda aprovada 755ms
+stderr | client/src/pages/FinanceiroPage.test.tsx > FinanceiroPage — cancelamento manual > apresenta saldo residual, baixas e ações do detalhe para um título parcial
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+ ✓ client/src/pages/FinanceiroPage.test.tsx (21 tests) 40004ms
+   ✓ FinanceiroPage — cancelamento manual > pede confirmação e remove o título da listagem após confirmar a exclusão 4050ms
+   ✓ FinanceiroPage — cancelamento manual > apresenta o fluxo de caixa com filtros de período e indicadores de saldo 842ms
+   ✓ FinanceiroPage — cancelamento manual > distingue a compra de diesel para o tanque do custo de abastecimento 625ms
+   ✓ FinanceiroPage — cancelamento manual > abre os históricos financeiros diretamente pelos novos atalhos laterais 301ms
+   ✓ FinanceiroPage — cancelamento manual > mantém a lista vazia até pesquisar, filtra títulos e destaca os compromissos do dia 3870ms
+   ✓ FinanceiroPage — cancelamento manual > aplica períodos rápidos e apresenta totais a pagar e receber do resultado pesquisado 1403ms
+   ✓ FinanceiroPage — cancelamento manual > pesquisa recebimentos de serragem pela origem e pela data efetiva 858ms
+   ✓ FinanceiroPage — cancelamento manual > permite reagendar o vencimento de uma conta vinculada ao romaneio de carga 2814ms
+   ✓ FinanceiroPage — cancelamento manual > confirma o estorno com motivo e sinaliza a baixa preservada como estornada 4653ms
+   ✓ FinanceiroPage — cancelamento manual > abre a edição pela descrição e mantém a categoria de receita da venda 2874ms
+   ✓ FinanceiroPage — cancelamento manual > oferece modelo, exportação e importação CSV com orientação de validação 545ms
+   ✓ FinanceiroPage — cancelamento manual > permite preparar documentos e conferir a linha digitável em um lançamento a pagar 4658ms
+   ✓ FinanceiroPage — cancelamento manual > copia o código do boleto e pré-visualiza o PDF anexado ao agendamento 2058ms
+   ✓ FinanceiroPage — cancelamento manual > exporta somente os títulos visíveis após aplicar os filtros 1952ms
+   ✓ FinanceiroPage — cancelamento manual > seleciona títulos e envia uma alteração parcial em lote 2333ms
+   ✓ FinanceiroPage — cancelamento manual > permite criar um Centro de Custo no contexto e aplicá-lo em lote sem duplicar a rentabilidade 4172ms
+   ✓ FinanceiroPage — cancelamento manual > exibe cards rastreáveis e aging usando o mesmo conjunto de títulos operacionais 509ms
+   ✓ FinanceiroPage — cancelamento manual > filtra a fila de recebimentos pelo cliente selecionado 725ms
+   ✓ FinanceiroPage — cancelamento manual > apresenta saldo residual, baixas e ações do detalhe para um título parcial 467ms
+ ✓ client/src/pages/CaixaChequePage.test.tsx (4 tests) 816ms
+   ✓ CaixaChequePage > exibe o saldo, os totais e a rastreabilidade do cheque disponível 301ms
+ ✓ client/src/pages/DieselPage.test.tsx (6 tests) 2827ms
+   ✓ DieselPage > agenda a nota no financeiro antes de permitir a apropriação por abastecimento 899ms
+   ✓ DieselPage > permite criar o fornecedor diretamente na nota de diesel 767ms
+   ✓ DieselPage > regista um abastecimento com destino, sem criar uma nova conta a pagar 721ms
+ ✓ client/src/lib/financeiroPdf.test.tsx (1 test) 45ms
+ ✓ client/src/pages/InventarioPage.test.tsx (2 tests) 1217ms
+   ✓ InventarioPage > regista a contagem física pelo fluxo de ajuste auditável 967ms
+ ✓ client/src/lib/producaoKeyboardShortcuts.test.ts (2 tests) 31ms
+ ✓ client/src/components/FormValidationAssistant.test.tsx (2 tests) 73ms
+ ✓ client/src/components/ui/select.test.tsx (1 test) 537ms
+   ✓ Select > pesquisa as opções e mantém Criar novo como a primeira ação disponível 535ms
+stderr | client/src/pages/ClientesPage.test.tsx > ClientesPage > oferece importação de planilha com instruções e modelo
+Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+
+ ✓ client/src/pages/ClientesPage.test.tsx (2 tests) 352ms
+   ✓ ClientesPage > oferece importação de planilha com instruções e modelo 314ms
+ ✓ client/src/components/PageHeader.test.tsx (2 tests) 150ms
+ ✓ server/pdfRouter.test.ts (13 tests) 78ms
+ ✓ client/src/contexts/ThemeContext.test.tsx (1 test) 139ms
+ ✓ server/financeiro.logic.test.ts (26 tests) 16ms
+ ✓ server/producao.logic.test.ts (22 tests) 24ms
+ ✓ server/rentabilidade-financeira.logic.test.ts (6 tests) 19ms
+ ✓ server/rh.logic.test.ts (10 tests) 8ms
+ ✓ server/orcamento.estado.test.ts (11 tests) 18ms
+ ✓ server/rentabilidade-vendas.logic.test.ts (7 tests) 6ms
+ ✓ server/financeiro.intercambio.test.ts (7 tests) 10ms
+ ✓ server/repositories/financeiro.contas-operacionais.test.ts (5 tests) 10ms
+ ✓ client/src/lib/vendaItemGroup.test.ts (10 tests) 26ms
+ ✓ server/rh.gestao.logic.test.ts (7 tests) 6ms
+ ✓ server/alertas.processamento.test.ts (3 tests) 27ms
+ ✓ server/routers/orcamento.test.ts (9 tests) 14ms
+ ✓ server/producao.intercambio.test.ts (8 tests) 7ms
+ ✓ server/calculations.test.ts (15 tests) 23ms
+ ✓ server/contas-operacionais.logic.test.ts (5 tests) 5ms
+ ✓ server/custos-gerenciais.logic.test.ts (7 tests) 10ms
+ ✓ server/auth.login.test.ts (4 tests) 17ms
+ ✓ server/repositories/financeiro.automatico.test.ts (4 tests) 10ms
+ ✓ server/routers/financeiro.conciliacao.test.ts (2 tests) 14ms
+ ✓ server/rh.simplificado.logic.test.ts (5 tests) 29ms
+ ✓ server/security-boundaries.test.ts (5 tests) 26ms
+ ✓ server/routers/custosGerenciais.test.ts (4 tests) 13ms
+ ✓ server/navigation.test.ts (6 tests) 9ms
+ ✓ server/fornecedores.intercambio.test.ts (4 tests) 8ms
+ ✓ server/routers/cliente.test.ts (5 tests) 12ms
+ ✓ server/_core/storageProxy.test.ts (5 tests) 11ms
+ ✓ server/financeiro.conciliacao-boundary.test.ts (4 tests) 4ms
+ ✓ server/conciliacao.intercambio.test.ts (4 tests) 7ms
+ ✓ server/routers/financeiro.test.ts (9 tests) 13ms
+ ✓ server/financeiro.transferencias-boundary.test.ts (3 tests) 4ms
+ ✓ server/scheduledFinanceiro.test.ts (2 tests) 5ms
+ ✓ server/routers/producao.regularizacao.test.ts (3 tests) 9ms
+ ✓ server/conciliacao.logic.test.ts (2 tests) 6ms
+ ✓ server/cancelamento-titulos.test.ts (2 tests) 12ms
+ ✓ server/_core/context.test.ts (2 tests) 5ms
+ ✓ server/margemVendas.logic.test.ts (4 tests) 4ms
+ ✓ server/inventario.logic.test.ts (3 tests) 5ms
+ ✓ client/src/lib/acertoComercial.test.ts (3 tests) 4ms
+ ✓ server/uploads.security.test.ts (6 tests) 29ms
+ ✓ server/estorno-baixas.test.ts (2 tests) 8ms
+ ✓ client/src/lib/vendaMedidas.test.ts (2 tests) 4ms
+ ✓ server/rh.fichas.logic.test.ts (3 tests) 5ms
+ ✓ server/clientePerfil.logic.test.ts (2 tests) 5ms
+ ✓ server/estoque.intercambio.test.ts (4 tests) 6ms
+ ✓ server/auth.logout.test.ts (1 test) 5ms
+ ✓ server/rh.folha.parcelada.test.ts (2 tests) 4ms
+ ✓ client/src/lib/dashboardFinanceiro.test.ts (3 tests) 5ms
+ ✓ server/diesel.logic.test.ts (3 tests) 25ms
+ ✓ server/_core/loginRateLimit.test.ts (3 tests) 14ms
+ ✓ client/src/lib/safeNavigation.test.ts (13 tests) 5ms
+ ✓ server/_core/trpc.permissoes.test.ts (3 tests) 3ms
+ ✓ client/src/lib/relatorioMargemExport.test.ts (2 tests) 13ms
+ ✓ server/financeiro.ciclo-boundary.test.ts (2 tests) 3ms
+ ✓ server/financeiro.insert-boundary.test.ts (1 test) 20ms
+ ✓ server/boleto.test.ts (3 tests) 4ms
+ ✓ client/src/index.css.test.ts (3 tests) 3ms
+ ✓ server/autenticacao-local.test.ts (2 tests) 122ms
+ ✓ server/_core/cookies.test.ts (2 tests) 4ms
+ ✓ server/pdf.producao.logic.test.ts (1 test) 18ms
+ ✓ server/centros-custo.logic.test.ts (3 tests) 4ms
+ ✓ server/_core/publicUrl.test.ts (3 tests) 4ms
+ ✓ server/login-account.security.test.ts (1 test) 4ms
+ ✓ server/repositories.structure.test.ts (1 test) 3ms
+ ✓ server/pagamento.test.ts (4 tests) 10ms
+ ✓ server/db.test.ts (3 tests) 7ms
+ ✓ server/routers/empresa.test.ts (3 tests) 2ms
+ ✓ client/src/lib/utils.test.ts (2 tests) 2ms
+
+ Test Files  82 passed (82)
+      Tests  429 passed (429)
+   Start at  17:29:14
+   Duration  89.55s (transform 3.05s, setup 0ms, collect 44.76s, tests 78.97s, environment 23.59s, prepare 12.69s)
+
+
+Exit code: 0

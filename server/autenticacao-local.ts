@@ -6,6 +6,10 @@ const scrypt = promisify(scryptCallback);
 const DURACAO_SESSAO_MS = 1000 * 60 * 60 * 12;
 export const COOKIE_SESSAO_LOCAL = "fk_sessao_local";
 
+// Hash sintético usado para executar scrypt também quando o e-mail não existe.
+// Não corresponde a nenhuma credencial armazenada e nunca autentica um usuário.
+export const HASH_SENHA_DUMMY = `scrypt$${Buffer.alloc(16, 1).toString("base64url")}$${Buffer.alloc(64).toString("base64url")}`;
+
 function segredoObrigatorio() {
   if (!ENV.cookieSecret || ENV.cookieSecret.length < 32) {
     throw new Error("A chave segura da sessão não está configurada");

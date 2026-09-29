@@ -67,7 +67,7 @@ export async function updateMadeira(id: number, data: Partial<InsertMadeira>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const empresaId = (await getEmpresaUnica()).id;
-  await db.update(madeiras).set(data).where(and(eq(madeiras.id, id), eq(madeiras.empresaId, empresaId)));
+  await db.update(madeiras).set({ nome: data.nome, descricao: data.descricao, precoM3: data.precoM3, unidadeMedida: data.unidadeMedida, ativo: data.ativo }).where(and(eq(madeiras.id, id), eq(madeiras.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -109,7 +109,7 @@ export async function updateBitola(id: number, data: Partial<InsertBitola>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const empresaId = (await getEmpresaUnica()).id;
-  await db.update(bitolas).set(data).where(and(eq(bitolas.id, id), eq(bitolas.empresaId, empresaId)));
+  await db.update(bitolas).set({ madeiraId: data.madeiraId, espessura: data.espessura, largura: data.largura, comprimento: data.comprimento, descricao: data.descricao }).where(and(eq(bitolas.id, id), eq(bitolas.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -189,7 +189,7 @@ export async function updateCliente(id: number, data: Partial<InsertCliente>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const empresaId = (await getEmpresaUnica()).id;
-  await db.update(clientes).set(data).where(and(eq(clientes.id, id), eq(clientes.empresaId, empresaId)));
+  await db.update(clientes).set({ nome: data.nome, contacto: data.contacto, email: data.email, morada: data.morada, nif: data.nif, observacoes: data.observacoes, ativo: data.ativo }).where(and(eq(clientes.id, id), eq(clientes.empresaId, empresaId)));
   return { success: true };
 }
 

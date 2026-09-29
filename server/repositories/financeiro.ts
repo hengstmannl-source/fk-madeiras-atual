@@ -76,7 +76,7 @@ async function criarOuReativarVinculoConciliacao(
       desfeitoEm: null,
       desfeitoPor: null,
       motivoDesfeito: null,
-    }).where(eq(vinculosConciliacaoBancaria.id, existente.id));
+    }).where(and(eq(vinculosConciliacaoBancaria.id, existente.id), eq(vinculosConciliacaoBancaria.empresaId, input.empresaId)));
     return existente.id;
   }
   const inserido = await database.insert(vinculosConciliacaoBancaria).values({
@@ -238,7 +238,7 @@ export async function updateFornecedor(id: number, data: Partial<InsertFornecedo
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(fornecedores).set(data).where(and(eq(fornecedores.id, id), eq(fornecedores.empresaId, empresaId)));
+  await db.update(fornecedores).set({ nome: data.nome, contacto: data.contacto, email: data.email, documento: data.documento, endereco: data.endereco, observacoes: data.observacoes, ativo: data.ativo }).where(and(eq(fornecedores.id, id), eq(fornecedores.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -265,7 +265,7 @@ export async function updateCategoriaFinanceira(id: number, data: Partial<Insert
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(categoriasFinanceiras).set(data).where(and(eq(categoriasFinanceiras.id, id), eq(categoriasFinanceiras.empresaId, empresaId)));
+  await db.update(categoriasFinanceiras).set({ nome: data.nome, tipo: data.tipo, categoriaPaiId: data.categoriaPaiId, ativo: data.ativo }).where(and(eq(categoriasFinanceiras.id, id), eq(categoriasFinanceiras.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -287,7 +287,7 @@ export async function updateContaFinanceira(id: number, data: Partial<InsertCont
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(contasFinanceiras).set(data).where(and(eq(contasFinanceiras.id, id), eq(contasFinanceiras.empresaId, empresaId)));
+  await db.update(contasFinanceiras).set({ nome: data.nome, tipo: data.tipo, banco: data.banco, agencia: data.agencia, numeroConta: data.numeroConta, dataInicio: data.dataInicio, saldoInicial: data.saldoInicial, ativa: data.ativa, observacoes: data.observacoes }).where(and(eq(contasFinanceiras.id, id), eq(contasFinanceiras.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -567,8 +567,8 @@ export async function listChequesFinanceiros(
     contaNome: contasFinanceiras.nome,
     clienteNome: clientes.nome,
   }).from(chequesFinanceiros)
-    .innerJoin(contasFinanceiras, eq(chequesFinanceiros.contaFinanceiraId, contasFinanceiras.id))
-    .innerJoin(clientes, eq(chequesFinanceiros.clienteId, clientes.id))
+    .innerJoin(contasFinanceiras, and(eq(chequesFinanceiros.contaFinanceiraId, contasFinanceiras.id), eq(contasFinanceiras.empresaId, empresaId)))
+    .innerJoin(clientes, and(eq(chequesFinanceiros.clienteId, clientes.id), eq(clientes.empresaId, empresaId)))
     .where(and(...conditions))
     .orderBy(desc(chequesFinanceiros.dataRecebimento), desc(chequesFinanceiros.createdAt));
   const destinoIds = Array.from(new Set(cheques.map((cheque) => cheque.contaDestinoId).filter((id): id is number => id !== null)));
@@ -772,7 +772,7 @@ export async function garantirTituloFinanceiroComChave(input: GarantirTituloComC
   const centroCustoId = input.centroCustoId == null ? null : (await obterCentroCustoAtivo(input.centroCustoId, db, empresaId)).id;
 
   const existente = (await db.select().from(titulosFinanceiros)
-    .where(eq(titulosFinanceiros.chaveImportacao, chaveImportacao)).limit(1))[0];
+    .where(and(eq(titulosFinanceiros.chaveImportacao, chaveImportacao), eq(titulosFinanceiros.empresaId, empresaId))).limit(1))[0];
   if (existente) {
     if (existente.origem !== input.origem) {
       throw new Error("A chave de idempotência já está associada a outra origem financeira");
@@ -819,7 +819,7 @@ export async function garantirTituloFinanceiroComChave(input: GarantirTituloComC
     return { id, criado: true, titulo };
   } catch (error) {
     const concorrente = (await db.select().from(titulosFinanceiros)
-      .where(eq(titulosFinanceiros.chaveImportacao, chaveImportacao)).limit(1))[0];
+      .where(and(eq(titulosFinanceiros.chaveImportacao, chaveImportacao), eq(titulosFinanceiros.empresaId, empresaId))).limit(1))[0];
     if (concorrente?.origem === input.origem) return { id: concorrente.id, criado: false, titulo: concorrente };
     throw error;
   }
@@ -844,8 +844,8 @@ export async function listAnexosFinanceiros(tituloId: number) {
   if (!db) return [];
   const titulo = await getTituloFinanceiroById(tituloId);
   if (!titulo) return [];
-  return db.select().from(anexosFinanceiros)
-    .where(eq(anexosFinanceiros.tituloId, tituloId))
+  return db.select({ id: anexosFinanceiros.id, nomeArquivo: anexosFinanceiros.nomeArquivo, mimeType: anexosFinanceiros.mimeType, tamanhoBytes: anexosFinanceiros.tamanhoBytes, tipo: anexosFinanceiros.tipo, url: anexosFinanceiros.url, createdAt: anexosFinanceiros.createdAt }).from(anexosFinanceiros)
+    .where(and(eq(anexosFinanceiros.tituloId, tituloId), eq(anexosFinanceiros.empresaId, empresaId)))
     .orderBy(desc(anexosFinanceiros.createdAt));
 }
 
@@ -914,12 +914,12 @@ export async function atualizarAgendamentoFinanceiro(input: { id: number; dataVe
 
     await tx.update(titulosFinanceiros).set({
       dataVencimento: input.dataVencimento,
-    }).where(eq(titulosFinanceiros.id, titulo.id));
+    }).where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
     const ciclo = await reconciliarCicloTituloFinanceiro(tx, { ...titulo, dataVencimento: input.dataVencimento }, empresaId);
 
     if (titulo.origem === "romaneio_carga" && titulo.romaneioCargaId) {
       await tx.update(romaneiosCargaToras).set({ dataVencimento: input.dataVencimento })
-        .where(eq(romaneiosCargaToras.id, titulo.romaneioCargaId));
+        .where(and(eq(romaneiosCargaToras.id, titulo.romaneioCargaId), eq(romaneiosCargaToras.empresaId, empresaId)));
     }
     return { id: titulo.id, dataVencimento: input.dataVencimento, estado: ciclo.estado, romaneioCargaId: titulo.romaneioCargaId };
   });
@@ -957,6 +957,7 @@ export async function listTitulosFinanceiros(
     empresaId: number;
   },
 ) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = dependencias?.database ?? await getDb();
   if (!db && !dependencias?.titulos) return [];
   const conditions = [];
@@ -978,7 +979,7 @@ export async function listTitulosFinanceiros(
       tituloId: baixasFinanceiras.tituloId,
       dataBaixa: baixasFinanceiras.dataBaixa,
       estornada: baixasFinanceiras.estornada,
-    }).from(baixasFinanceiras).where(inArray(baixasFinanceiras.tituloId, idsTitulos)))
+    }).from(baixasFinanceiras).where(and(inArray(baixasFinanceiras.tituloId, idsTitulos), eq(baixasFinanceiras.empresaId, empresaId))))
     : [];
   const baixasValidasPorTitulo = new Map<number, Date[]>();
   baixas.filter((baixa) => !baixa.estornada).forEach((baixa) => {
@@ -1440,8 +1441,8 @@ export async function listBaixasFinanceiras(tituloId: number) {
     contaNome: contasFinanceiras.nome,
     contaTipo: contasFinanceiras.tipo,
   }).from(baixasFinanceiras)
-    .leftJoin(contasFinanceiras, eq(baixasFinanceiras.contaFinanceiraId, contasFinanceiras.id))
-    .where(eq(baixasFinanceiras.tituloId, tituloId))
+    .leftJoin(contasFinanceiras, and(eq(baixasFinanceiras.contaFinanceiraId, contasFinanceiras.id), eq(contasFinanceiras.empresaId, empresaId)))
+    .where(and(eq(baixasFinanceiras.tituloId, tituloId), eq(baixasFinanceiras.empresaId, empresaId)))
     .orderBy(desc(baixasFinanceiras.dataBaixa));
 }
 
@@ -1449,9 +1450,9 @@ export async function conciliarBaixaFinanceira(id: number, conciliada: boolean) 
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const baixa = (await db.select({ tituloId: baixasFinanceiras.tituloId }).from(baixasFinanceiras).where(eq(baixasFinanceiras.id, id)).limit(1))[0];
+  const baixa = (await db.select({ tituloId: baixasFinanceiras.tituloId }).from(baixasFinanceiras).where(and(eq(baixasFinanceiras.id, id), eq(baixasFinanceiras.empresaId, empresaId))).limit(1))[0];
   if (!baixa || !(await getTituloFinanceiroById(baixa.tituloId))) throw new Error("Baixa financeira não encontrada");
-  await db.update(baixasFinanceiras).set({ conciliada, conciliadaEm: conciliada ? new Date() : null }).where(eq(baixasFinanceiras.id, id));
+  await db.update(baixasFinanceiras).set({ conciliada, conciliadaEm: conciliada ? new Date() : null }).where(and(eq(baixasFinanceiras.id, id), eq(baixasFinanceiras.empresaId, empresaId)));
   return { success: true };
 }
 
@@ -1573,10 +1574,10 @@ export async function listConciliacaoBancaria(filtros: { contaFinanceiraId?: num
     baixaContraparte: titulosFinanceiros.contraparteNome,
     baixaTipoTitulo: titulosFinanceiros.tipo,
   }).from(movimentosExtratoBancario)
-    .innerJoin(contasFinanceiras, eq(movimentosExtratoBancario.contaFinanceiraId, contasFinanceiras.id))
-    .innerJoin(extratosBancarios, eq(movimentosExtratoBancario.extratoId, extratosBancarios.id))
-    .leftJoin(baixasFinanceiras, eq(movimentosExtratoBancario.baixaFinanceiraId, baixasFinanceiras.id))
-    .leftJoin(titulosFinanceiros, eq(baixasFinanceiras.tituloId, titulosFinanceiros.id));
+    .innerJoin(contasFinanceiras, and(eq(movimentosExtratoBancario.contaFinanceiraId, contasFinanceiras.id), eq(contasFinanceiras.empresaId, empresaId)))
+    .innerJoin(extratosBancarios, and(eq(movimentosExtratoBancario.extratoId, extratosBancarios.id), eq(extratosBancarios.empresaId, empresaId)))
+    .leftJoin(baixasFinanceiras, and(eq(movimentosExtratoBancario.baixaFinanceiraId, baixasFinanceiras.id), eq(baixasFinanceiras.empresaId, empresaId)))
+    .leftJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)));
   const movimentos = condicoes.length ? await consultaMovimentos.where(and(...condicoes)).orderBy(desc(movimentosExtratoBancario.dataMovimento), desc(movimentosExtratoBancario.id)) : await consultaMovimentos.orderBy(desc(movimentosExtratoBancario.dataMovimento), desc(movimentosExtratoBancario.id));
   const contasIds = Array.from(new Set(movimentos.map((movimento) => movimento.contaFinanceiraId)));
   const baixas = contasIds.length ? await db.select({
@@ -1589,7 +1590,7 @@ export async function listConciliacaoBancaria(filtros: { contaFinanceiraId?: num
     contraparteNome: titulosFinanceiros.contraparteNome,
     contaFinanceiraId: baixasFinanceiras.contaFinanceiraId,
   }).from(baixasFinanceiras)
-    .innerJoin(titulosFinanceiros, eq(baixasFinanceiras.tituloId, titulosFinanceiros.id))
+    .innerJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
     .where(and(eq(baixasFinanceiras.empresaId, empresaId), inArray(baixasFinanceiras.contaFinanceiraId, contasIds), eq(baixasFinanceiras.estornada, false), eq(baixasFinanceiras.conciliada, false))) : [];
   const transferencias = contasIds.length ? await db.select({
     id: movimentosTransferenciasFinanceiras.id,
@@ -1600,7 +1601,7 @@ export async function listConciliacaoBancaria(filtros: { contaFinanceiraId?: num
     dataMovimento: transferenciasFinanceiras.dataTransferencia,
     descricao: transferenciasFinanceiras.descricao,
   }).from(movimentosTransferenciasFinanceiras)
-    .innerJoin(transferenciasFinanceiras, eq(movimentosTransferenciasFinanceiras.transferenciaId, transferenciasFinanceiras.id))
+    .innerJoin(transferenciasFinanceiras, and(eq(movimentosTransferenciasFinanceiras.transferenciaId, transferenciasFinanceiras.id), eq(transferenciasFinanceiras.empresaId, empresaId)))
     .where(and(
       eq(movimentosTransferenciasFinanceiras.empresaId, empresaId),
       inArray(movimentosTransferenciasFinanceiras.contaFinanceiraId, contasIds),
@@ -1632,7 +1633,7 @@ export async function confirmarConciliacaoBancaria(input: { movimentoId: number;
       conciliada: baixasFinanceiras.conciliada,
       tipoTitulo: titulosFinanceiros.tipo,
     }).from(baixasFinanceiras)
-      .innerJoin(titulosFinanceiros, eq(baixasFinanceiras.tituloId, titulosFinanceiros.id))
+      .innerJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
       .where(and(eq(baixasFinanceiras.id, input.baixaFinanceiraId), eq(baixasFinanceiras.empresaId, empresaId), eq(titulosFinanceiros.empresaId, empresaId)))
       .for("update").limit(1))[0];
     if (!baixa || baixa.estornada) throw new Error("A baixa selecionada não está disponível para conciliação");
@@ -1680,7 +1681,7 @@ export async function confirmarConciliacaoTransferenciaBancaria(input: { movimen
       valor: movimentosTransferenciasFinanceiras.valor,
       estado: transferenciasFinanceiras.estado,
     }).from(movimentosTransferenciasFinanceiras)
-      .innerJoin(transferenciasFinanceiras, eq(movimentosTransferenciasFinanceiras.transferenciaId, transferenciasFinanceiras.id))
+      .innerJoin(transferenciasFinanceiras, and(eq(movimentosTransferenciasFinanceiras.transferenciaId, transferenciasFinanceiras.id), eq(transferenciasFinanceiras.empresaId, empresaId)))
       .where(and(
         eq(movimentosTransferenciasFinanceiras.id, input.movimentoTransferenciaFinanceiraId),
         eq(movimentosTransferenciasFinanceiras.empresaId, empresaId),
@@ -1878,8 +1879,8 @@ export async function getRelatorioFluxoCaixa(periodo: { dataInicio: Date; dataFi
       estornada: baixasFinanceiras.estornada,
       contaNome: contasFinanceiras.nome,
     }).from(baixasFinanceiras)
-      .innerJoin(titulosFinanceiros, eq(baixasFinanceiras.tituloId, titulosFinanceiros.id))
-      .leftJoin(contasFinanceiras, eq(baixasFinanceiras.contaFinanceiraId, contasFinanceiras.id))
+      .innerJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
+      .leftJoin(contasFinanceiras, and(eq(baixasFinanceiras.contaFinanceiraId, contasFinanceiras.id), eq(contasFinanceiras.empresaId, empresaId)))
       .where(and(
         eq(baixasFinanceiras.empresaId, empresaId),
         eq(titulosFinanceiros.empresaId, empresaId),
@@ -1931,9 +1932,9 @@ export async function getFluxoCaixaGerencial(input: {
       clienteNome: clientes.nome,
       fornecedorNome: fornecedores.nome,
     }).from(titulosFinanceiros)
-      .leftJoin(categoriasFinanceiras, eq(titulosFinanceiros.categoriaId, categoriasFinanceiras.id))
-      .leftJoin(clientes, eq(titulosFinanceiros.clienteId, clientes.id))
-      .leftJoin(fornecedores, eq(titulosFinanceiros.fornecedorId, fornecedores.id))
+      .leftJoin(categoriasFinanceiras, and(eq(titulosFinanceiros.categoriaId, categoriasFinanceiras.id), eq(categoriasFinanceiras.empresaId, empresaId)))
+      .leftJoin(clientes, and(eq(titulosFinanceiros.clienteId, clientes.id), eq(clientes.empresaId, empresaId)))
+      .leftJoin(fornecedores, and(eq(titulosFinanceiros.fornecedorId, fornecedores.id), eq(fornecedores.empresaId, empresaId)))
       .where(eq(titulosFinanceiros.empresaId, empresaId)),
     db.select({
       id: baixasFinanceiras.id,
@@ -1950,10 +1951,10 @@ export async function getFluxoCaixaGerencial(input: {
       clienteNome: clientes.nome,
       fornecedorNome: fornecedores.nome,
     }).from(baixasFinanceiras)
-      .innerJoin(titulosFinanceiros, eq(baixasFinanceiras.tituloId, titulosFinanceiros.id))
-      .leftJoin(categoriasFinanceiras, eq(titulosFinanceiros.categoriaId, categoriasFinanceiras.id))
-      .leftJoin(clientes, eq(titulosFinanceiros.clienteId, clientes.id))
-      .leftJoin(fornecedores, eq(titulosFinanceiros.fornecedorId, fornecedores.id))
+      .innerJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
+      .leftJoin(categoriasFinanceiras, and(eq(titulosFinanceiros.categoriaId, categoriasFinanceiras.id), eq(categoriasFinanceiras.empresaId, empresaId)))
+      .leftJoin(clientes, and(eq(titulosFinanceiros.clienteId, clientes.id), eq(clientes.empresaId, empresaId)))
+      .leftJoin(fornecedores, and(eq(titulosFinanceiros.fornecedorId, fornecedores.id), eq(fornecedores.empresaId, empresaId)))
       .where(and(
         eq(baixasFinanceiras.empresaId, empresaId),
         eq(titulosFinanceiros.empresaId, empresaId),
@@ -1968,7 +1969,7 @@ export async function getFluxoCaixaGerencial(input: {
       dataMovimento: movimentosTransferenciasFinanceiras.dataMovimento,
       descricao: movimentosTransferenciasFinanceiras.descricao,
     }).from(movimentosTransferenciasFinanceiras)
-      .innerJoin(transferenciasFinanceiras, eq(movimentosTransferenciasFinanceiras.transferenciaId, transferenciasFinanceiras.id))
+      .innerJoin(transferenciasFinanceiras, and(eq(movimentosTransferenciasFinanceiras.transferenciaId, transferenciasFinanceiras.id), eq(transferenciasFinanceiras.empresaId, empresaId)))
       .where(and(
         eq(movimentosTransferenciasFinanceiras.empresaId, empresaId),
         eq(transferenciasFinanceiras.empresaId, empresaId),
@@ -2014,7 +2015,7 @@ export async function getPrevisaoSemanalCaixa(semanas = 8) {
       valor: baixasFinanceiras.valor,
       dataBaixa: baixasFinanceiras.dataBaixa,
     }).from(baixasFinanceiras)
-      .innerJoin(titulosFinanceiros, eq(baixasFinanceiras.tituloId, titulosFinanceiros.id))
+      .innerJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
       .where(and(
         eq(baixasFinanceiras.empresaId, empresaId),
         eq(titulosFinanceiros.empresaId, empresaId),
@@ -2400,7 +2401,7 @@ export async function configurarCondicaoPagamentoVenda(
           .where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
       }
       await tx.update(alertasFinanceiros).set({ resolvidoEm: agora })
-        .where(inArray(alertasFinanceiros.tituloId, tituloIdsAtivos));
+        .where(and(inArray(alertasFinanceiros.tituloId, tituloIdsAtivos), eq(alertasFinanceiros.empresaId, empresaId)));
     }
 
     const valoresParcelas = calcularParcelas(orcamento.total, parcelas.length);
@@ -2486,33 +2487,46 @@ export async function configurarCondicaoPagamentoVenda(
 }
 
 export async function listRecorrenciasFinanceiras() {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(recorrenciasFinanceiras).orderBy(desc(recorrenciasFinanceiras.proximoVencimento));
+  return db.select().from(recorrenciasFinanceiras).where(eq(recorrenciasFinanceiras.empresaId, empresaId)).orderBy(desc(recorrenciasFinanceiras.proximoVencimento));
+}
+
+function camposRecorrencia(data: Partial<InsertRecorrenciaFinanceira>) {
+  return { tipo: data.tipo, descricao: data.descricao, clienteId: data.clienteId,
+    fornecedorId: data.fornecedorId, contraparteNome: data.contraparteNome,
+    categoriaId: data.categoriaId, centroCustoId: data.centroCustoId,
+    contaFinanceiraId: data.contaFinanceiraId, valor: data.valor,
+    frequencia: data.frequencia, proximoVencimento: data.proximoVencimento,
+    dataFim: data.dataFim, ativa: data.ativa, observacoes: data.observacoes };
 }
 
 export async function createRecorrenciaFinanceira(data: InsertRecorrenciaFinanceira) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (decimalParaNumero(data.valor) <= 0) throw new Error("O valor da recorrência deve ser maior que zero");
   if (data.centroCustoId != null) await obterCentroCustoAtivo(data.centroCustoId, db, data.empresaId);
-  const result = await db.insert(recorrenciasFinanceiras).values(data);
+  const result = await db.insert(recorrenciasFinanceiras).values({ ...camposRecorrencia(data), tipo: data.tipo, descricao: data.descricao, categoriaId: data.categoriaId, valor: data.valor, frequencia: data.frequencia, proximoVencimento: data.proximoVencimento, criadoPor: data.criadoPor, empresaId });
   return { id: getInsertedId(result as MysqlInsertResult) };
 }
 
 export async function updateRecorrenciaFinanceira(id: number, data: Partial<InsertRecorrenciaFinanceira>) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (data.centroCustoId != null) await obterCentroCustoAtivo(data.centroCustoId, db);
-  await db.update(recorrenciasFinanceiras).set(data).where(eq(recorrenciasFinanceiras.id, id));
+  await db.update(recorrenciasFinanceiras).set(camposRecorrencia(data)).where(and(eq(recorrenciasFinanceiras.id, id), eq(recorrenciasFinanceiras.empresaId, empresaId)));
   return { success: true };
 }
 
 export async function getConfiguracaoFinanceiraByTaskUid(taskUid: string) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(configuracoesFinanceiras)
-    .where(eq(configuracoesFinanceiras.alertaCronTaskUid, taskUid)).limit(1);
+    .where(and(eq(configuracoesFinanceiras.alertaCronTaskUid, taskUid), eq(configuracoesFinanceiras.empresaId, empresaId))).limit(1);
   return result[0];
 }
 
@@ -2551,7 +2565,7 @@ export async function listAlertasFinanceiros() {
     estadoTitulo: titulosFinanceiros.estado,
     tipoTitulo: titulosFinanceiros.tipo,
   }).from(alertasFinanceiros)
-    .innerJoin(titulosFinanceiros, eq(alertasFinanceiros.tituloId, titulosFinanceiros.id))
+    .innerJoin(titulosFinanceiros, and(eq(alertasFinanceiros.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
     .where(and(eq(alertasFinanceiros.estado, "ativo"), eq(alertasFinanceiros.empresaId, empresaId)))
     .orderBy(desc(alertasFinanceiros.createdAt));
 
@@ -2575,17 +2589,18 @@ export async function listAlertasFinanceiros() {
 
     await db.update(alertasFinanceiros)
       .set({ estado: "resolvido", resolvidoEm: agora })
-      .where(and(eq(alertasFinanceiros.id, alerta.id), eq(alertasFinanceiros.estado, "ativo")));
+      .where(and(and(eq(alertasFinanceiros.id, alerta.id), eq(alertasFinanceiros.estado, "ativo")), eq(alertasFinanceiros.empresaId, empresaId)));
   }
   return alertasAtuais;
 }
 
 export async function processarAlertasFinanceiros(agora = new Date(), database?: any) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
-  const configuracoes = await db.select().from(configuracoesFinanceiras);
+  const configuracoes = await db.select().from(configuracoesFinanceiras).where(eq(configuracoesFinanceiras.empresaId, empresaId));
   const diasPorEmpresa = new Map<number, number>(configuracoes.map((configuracao: { empresaId: number; alertaDiasAntecedencia: number }) => [Number(configuracao.empresaId), Number(configuracao.alertaDiasAntecedencia)]));
-  const titulos = await db.select().from(titulosFinanceiros);
+  const titulos = await db.select().from(titulosFinanceiros).where(eq(titulosFinanceiros.empresaId, empresaId));
   let alertasCriados = 0;
   let alertasResolvidos = 0;
 
@@ -2623,9 +2638,10 @@ export async function processarAlertasFinanceiros(agora = new Date(), database?:
 }
 
 export async function processarRecorrenciasFinanceiras(agora = new Date(), database?: any) {
+  const empresaId = (await getEmpresaUnica()).id;
   const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
-  const recorrencias = await db.select().from(recorrenciasFinanceiras).where(eq(recorrenciasFinanceiras.ativa, true));
+  const recorrencias = await db.select().from(recorrenciasFinanceiras).where(and(eq(recorrenciasFinanceiras.ativa, true), eq(recorrenciasFinanceiras.empresaId, empresaId)));
   let titulosGerados = 0;
 
   for (const recorrencia of recorrencias) {
@@ -2656,11 +2672,11 @@ export async function processarRecorrenciasFinanceiras(agora = new Date(), datab
     }
     if (vencimento.getTime() !== new Date(recorrencia.proximoVencimento).getTime()) {
       const ativa = !fim || vencimento <= fim;
-      await db.update(recorrenciasFinanceiras).set({ proximoVencimento: vencimento, ativa }).where(eq(recorrenciasFinanceiras.id, recorrencia.id));
+      await db.update(recorrenciasFinanceiras).set({ proximoVencimento: vencimento, ativa }).where(and(eq(recorrenciasFinanceiras.id, recorrencia.id), eq(recorrenciasFinanceiras.empresaId, empresaId)));
     }
   }
 
   const alertas = await processarAlertasFinanceiros(agora, db);
-  await db.update(configuracoesFinanceiras).set({ ultimoProcessamentoEm: agora });
+  await db.update(configuracoesFinanceiras).set({ ultimoProcessamentoEm: agora }).where(eq(configuracoesFinanceiras.empresaId, empresaId));
   return { titulosGerados, recorrenciasAnalisadas: recorrencias.length, ...alertas };
 }
