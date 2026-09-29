@@ -52,11 +52,17 @@ describe("auth.logout", () => {
     expect(result).toEqual({ success: true });
     expect(clearedCookies).toHaveLength(2);
     expect(clearedCookies.map((cookie) => cookie.name)).toEqual([COOKIE_NAME, COOKIE_SESSAO_LOCAL]);
-    expect(clearedCookies[0]?.options).toMatchObject({
-      secure: true,
-      sameSite: "lax",
-      httpOnly: true,
-      path: "/",
-    });
+    for (const cookie of clearedCookies) {
+      expect(cookie.options).toMatchObject({
+        secure: true,
+        sameSite: "lax",
+        httpOnly: true,
+        path: "/",
+      });
+      // Express clearCookie sets Expires in the past itself; maxAge: -1 is not required.
+      expect(cookie.options).not.toHaveProperty("maxAge");
+      expect(cookie.options).not.toHaveProperty("expires");
+      expect(cookie.options).not.toHaveProperty("domain");
+    }
   });
 });

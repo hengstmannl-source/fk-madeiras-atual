@@ -99,7 +99,7 @@
 
 @layer base {
   body {
-    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    font-family: 'DM Sans Variable', system-ui, -apple-system, sans-serif;
     background-color: var(--background);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -134,10 +134,10 @@
   .fk-eyebrow { margin-bottom: 0.2rem; color: var(--muted-foreground); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
   .fk-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent); padding-bottom: 1.25rem; }
   .fk-page-header__icon { display: flex; height: 2.75rem; width: 2.75rem; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid color-mix(in oklab, var(--primary) 22%, var(--border)); border-radius: 0.8rem; background-color: color-mix(in oklab, var(--primary) 9%, var(--card)); color: var(--primary); }
-  .fk-page-header__title { font-family: 'Manrope', 'DM Sans', sans-serif; color: var(--foreground); font-size: clamp(1.35rem, 1.1rem + 0.65vw, 1.85rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.14; }
+  .fk-page-header__title { font-family: 'Manrope Variable', 'DM Sans Variable', sans-serif; color: var(--foreground); font-size: clamp(1.35rem, 1.1rem + 0.65vw, 1.85rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.14; }
   .fk-page-header__description { margin-top: 0.3rem; max-width: 48rem; color: var(--muted-foreground); font-size: 0.875rem; line-height: 1.5; }
   .fk-panel, .fk-kpi-card { border: 1px solid color-mix(in oklab, var(--border) 86%, transparent); border-radius: var(--radius); background-color: var(--card); box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent); }
-  .fk-kpi-value { font-family: 'Manrope', 'DM Sans', sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.035em; }
+  .fk-kpi-value { font-family: 'Manrope Variable', 'DM Sans Variable', sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.035em; }
   .fk-panel > .border-b { border-color: color-mix(in oklab, var(--border) 84%, transparent); }
   .fk-panel :is(input, textarea, [role="combobox"]) { border-color: color-mix(in oklab, var(--border) 92%, transparent); background-color: color-mix(in oklab, var(--card) 96%, var(--background)); }
   .fk-panel :is(input, textarea, [role="combobox"]):focus-visible { border-color: color-mix(in oklab, var(--primary) 72%, var(--border)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 12%, transparent); }

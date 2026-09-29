@@ -3,6 +3,11 @@ vi.mock("./repositories/identidade", async (importOriginal) => ({ ...await impor
 import { describe, expect, it, vi } from "vitest";
 import { estornarBaixaFinanceira } from "./db";
 
+vi.mock("./repositories/identidade", async (importOriginal) => {
+  const identidade = await importOriginal<typeof import("./repositories/identidade")>();
+  return { ...identidade, getEmpresaUnica: vi.fn(async () => ({ id: 1 })) };
+});
+
 describe("estorno de baixas financeiras", () => {
   it("preserva a baixa, registra a auditoria e reabre parcialmente o título", async () => {
     const where = vi.fn().mockResolvedValue(undefined);

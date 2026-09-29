@@ -51,10 +51,10 @@ async function startServer() {
           : {
               directives: {
                 ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-                "style-src": ["'self'", "https://fonts.googleapis.com"],
-                "style-src-elem": ["'self'", "https://fonts.googleapis.com"],
+                "style-src": ["'self'"],
+                "style-src-elem": ["'self'"],
                 "style-src-attr": ["'unsafe-inline'"],
-                "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
+                "font-src": ["'self'", "data:"],
                 "img-src": ["'self'", "data:", "blob:"],
                 "frame-src": ["'self'", "blob:"],
               },

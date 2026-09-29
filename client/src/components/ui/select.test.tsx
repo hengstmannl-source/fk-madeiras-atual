@@ -30,10 +30,10 @@ describe("Select", () => {
     );
 
     await user.click(screen.getByRole("combobox", { name: "Fornecedor" }));
-    const pesquisa = screen.getByRole("textbox", { name: "Pesquisar na lista" });
+    const pesquisa = await screen.findByRole("textbox", { name: "Pesquisar na lista" });
     await user.type(pesquisa, "cedrinho");
 
-    expect(screen.getByRole("option", { name: /Criar novo fornecedor/i })).toBeTruthy();
+    expect(await screen.findByRole("option", { name: /Criar novo fornecedor/i })).toBeTruthy();
     expect(screen.getByText("Posto Cedrinho")).toBeTruthy();
     expect(screen.queryByText("Posto Central")).toBeNull();
 

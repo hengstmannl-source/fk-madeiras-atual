@@ -3,6 +3,11 @@ vi.mock("./repositories/identidade", async (importOriginal) => ({ ...await impor
 import { describe, expect, it, vi } from "vitest";
 import { cancelarTituloFinanceiro, listTitulosFinanceiros } from "./db";
 
+vi.mock("./repositories/identidade", async (importOriginal) => {
+  const identidade = await importOriginal<typeof import("./repositories/identidade")>();
+  return { ...identidade, getEmpresaUnica: vi.fn(async () => ({ id: 1 })) };
+});
+
 describe("cancelamento manual de títulos financeiros", () => {
   it("cancela uma conta sem baixas e não a mantém nas listas ativas", async () => {
     const set = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
