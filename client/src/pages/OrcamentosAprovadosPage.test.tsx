@@ -1,6 +1,6 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -63,19 +63,18 @@ describe("OrcamentosAprovadosPage — entrega física independente", () => {
     };
   });
 
-  it("registra a baixa física de uma venda paga com os dados operacionais da entrega", async () => {
-    const user = userEvent.setup();
+  it("registra a baixa física de uma venda paga com os dados operacionais da entrega", () => {
     render(<OrcamentosAprovadosPage />);
 
     expect(screen.getByText("Aguardando baixa física")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Registrar entrega" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registrar entrega" }));
     expect(screen.getByRole("heading", { name: "Registrar entrega física" })).toBeInTheDocument();
     expect(screen.getByText(/mesmo que o pagamento ainda esteja em aberto/i)).toBeInTheDocument();
     expect(screen.getByText(/saldo negativo para regularização/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Responsável pela entrega *"), "João da Silva");
+    fireEvent.change(screen.getByLabelText("Responsável pela entrega *"), { target: { value: "João da Silva" } });
 
-    await user.click(screen.getByRole("button", { name: "Confirmar entrega e baixa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar entrega e baixa" }));
     expect(state.entregar).toHaveBeenCalledWith(expect.objectContaining({
       id: 25,
       modalidadeEntrega: "retirada",

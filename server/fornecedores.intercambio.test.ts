@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { importarFornecedoresCsv } from "./db";
 import { criarModeloCsvFornecedores, prepararImportacaoFornecedores, validarCsvFornecedores } from "./fornecedores.intercambio";
+
+vi.mock("./repositories/identidade", async (importOriginal) => {
+  const identidade = await importOriginal<typeof import("./repositories/identidade")>();
+  return { ...identidade, getEmpresaUnica: vi.fn(async () => ({ id: 1 })) };
+});
 
 const cabecalho = "nome;contacto;email;documento;endereco;observacoes";
 

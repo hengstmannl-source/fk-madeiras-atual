@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { atribuirNumeroVendaAprovada, atualizarDatasOrcamento, cancelarRecebivelDeVendaExcluida, configurarCondicaoPagamentoVenda, entregarVendaFisicamente, formatarNumeroDocumentoPadronizado, listTitulosFinanceiros, updateOrcamentoEstado } from "./db";
 import { formatReceivableSaleReference } from "../client/src/lib/utils";
 
+vi.mock("./repositories/identidade", async (importOriginal) => {
+  const identidade = await importOriginal<typeof import("./repositories/identidade")>();
+  return { ...identidade, getEmpresaUnica: vi.fn(async () => ({ id: 1 })) };
+});
+
 function criarBancoDeOrcamentoFalso() {
   const historicos: any[] = [];
   const db = {

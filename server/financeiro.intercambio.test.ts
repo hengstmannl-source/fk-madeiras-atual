@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { criarModeloCsvLancamentos, exportarLancamentosCsv, prepararImportacaoLancamentos, validarCsvLancamentos } from "./financeiro.intercambio";
 import { importarLancamentosFinanceirosCsv } from "./db";
+
+vi.mock("./repositories/identidade", async (importOriginal) => {
+  const identidade = await importOriginal<typeof import("./repositories/identidade")>();
+  return { ...identidade, getEmpresaUnica: vi.fn(async () => ({ id: 1 })) };
+});
 
 describe("intercâmbio de lançamentos financeiros", () => {
   it("valida uma importação CSV em formato brasileiro e preserva campos entre aspas", () => {

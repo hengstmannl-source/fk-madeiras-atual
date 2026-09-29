@@ -1,6 +1,6 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -127,20 +127,19 @@ describe("ProducaoPage", () => {
   });
 
   it("calcula o volume das toras de terceiros, mostra a cobrança por m³ e repete a última essência", async () => {
-    const user = userEvent.setup();
     render(<ProducaoPage />);
 
-    await user.click(screen.getByRole("button", { name: "Serragem de terceiros" }));
-    await user.type(screen.getByLabelText("Referência da tora 1"), "CLI-02");
-    await user.type(screen.getByLabelText("Essência da tora 1"), "Cedrinho");
-    await user.type(screen.getByLabelText("Diâmetro da tora 1"), "50");
-    await user.type(screen.getByLabelText("Comprimento da tora 1"), "4");
-    await user.type(screen.getByLabelText("Tarifa por m³ (R$) *"), "50");
+    fireEvent.click(screen.getByRole("button", { name: "Serragem de terceiros" }));
+    fireEvent.change(screen.getByLabelText("Referência da tora 1"), { target: { value: "CLI-02" } });
+    fireEvent.change(screen.getByLabelText("Essência da tora 1"), { target: { value: "Cedrinho" } });
+    fireEvent.change(screen.getByLabelText("Diâmetro da tora 1"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Comprimento da tora 1"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("Tarifa por m³ (R$) *"), { target: { value: "50" } });
 
     expect(screen.getByDisplayValue("0,785")).toBeInTheDocument();
     expect(screen.getByText(/Cobrança calculada:/)).toHaveTextContent("R$ 39,27");
 
-    await user.click(screen.getByRole("button", { name: "Adicionar tora" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tora" }));
     expect(screen.getByLabelText("Referência da tora 1")).toHaveValue("");
     expect(screen.getByLabelText("Essência da tora 1")).toHaveValue("Cedrinho");
     expect(screen.getByLabelText("Referência da tora 2")).toHaveValue("CLI-02");
@@ -152,24 +151,24 @@ describe("ProducaoPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Serragem de terceiros" }));
     await user.click(screen.getByRole("combobox", { name: "Cliente proprietário" }));
-    await user.click(screen.getAllByRole("option")[1]);
-    await user.type(screen.getByLabelText("Referência da tora 1"), "CLI-03");
-    await user.type(screen.getByLabelText("Essência da tora 1"), "Cedrinho");
-    await user.type(screen.getByLabelText("Diâmetro da tora 1"), "50");
-    await user.type(screen.getByLabelText("Comprimento da tora 1"), "4");
-    await user.type(screen.getByLabelText("Tarifa por m³ (R$) *"), "50");
-    await user.click(screen.getByRole("button", { name: "Continuar para peças" }));
+    const opcoesCliente = await screen.findAllByRole("option");
+    await user.click(opcoesCliente[1]);
+    fireEvent.change(screen.getByLabelText("Referência da tora 1"), { target: { value: "CLI-03" } });
+    fireEvent.change(screen.getByLabelText("Essência da tora 1"), { target: { value: "Cedrinho" } });
+    fireEvent.change(screen.getByLabelText("Diâmetro da tora 1"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Comprimento da tora 1"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("Tarifa por m³ (R$) *"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continuar para peças" }));
     expect(screen.getByText("Romaneio de madeira serrada")).toBeInTheDocument();
     expect(screen.getByLabelText("Essência da medida de terceiros")).toHaveValue("Cedrinho");
     expect(screen.getByLabelText("Comprimento da peça de terceiros 1")).toHaveValue("2");
     expect(screen.getByLabelText("Comprimento da peça de terceiros 15")).toHaveValue("9");
-    await user.type(screen.getByLabelText("Espessura da medida de terceiros"), "2.5");
-    await user.type(screen.getByLabelText("Largura da medida de terceiros"), "15");
-    await user.clear(screen.getByLabelText("Comprimento da peça de terceiros 1"));
-    await user.type(screen.getByLabelText("Comprimento da peça de terceiros 1"), "3");
-    await user.type(screen.getByLabelText("Quantidade da peça de terceiros 1"), "10");
-    await user.click(screen.getByRole("button", { name: "Adicionar comprimentos ao romaneio" }));
-    await user.click(screen.getByRole("button", { name: "Registrar serviço" }));
+    fireEvent.change(screen.getByLabelText("Espessura da medida de terceiros"), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Largura da medida de terceiros"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("Comprimento da peça de terceiros 1"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Quantidade da peça de terceiros 1"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar comprimentos ao romaneio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registrar serviço" }));
 
     expect(criarSerragemMock).toHaveBeenCalledOnce();
     const [dados] = criarSerragemMock.mock.calls[0];
@@ -185,15 +184,16 @@ describe("ProducaoPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Serragem de terceiros" }));
     await user.click(screen.getByRole("combobox", { name: "Cliente proprietário" }));
-    await user.click(screen.getAllByRole("option")[1]);
-    await user.type(screen.getByLabelText("Essência da tora 1"), "Cedrinho");
-    await user.type(screen.getByLabelText("Diâmetro da tora 1"), "50");
-    await user.type(screen.getByLabelText("Comprimento da tora 1"), "4");
-    await user.type(screen.getByLabelText("Tarifa por m³ (R$) *"), "50");
+    const opcoesCliente = await screen.findAllByRole("option");
+    await user.click(opcoesCliente[1]);
+    fireEvent.change(screen.getByLabelText("Essência da tora 1"), { target: { value: "Cedrinho" } });
+    fireEvent.change(screen.getByLabelText("Diâmetro da tora 1"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Comprimento da tora 1"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("Tarifa por m³ (R$) *"), { target: { value: "50" } });
 
     const continuar = screen.getByRole("button", { name: "Continuar para peças" });
     expect(continuar).toBeEnabled();
-    await user.click(continuar);
+    fireEvent.click(continuar);
 
     expect(screen.getByText("Romaneio de madeira serrada")).toBeInTheDocument();
   });
@@ -362,15 +362,13 @@ describe("ProducaoPage", () => {
     expect(screen.getByLabelText("Comprimento da linha 1")).toHaveValue("2");
     expect(screen.getByLabelText("Comprimento da linha 15")).toHaveValue("9");
 
-    await user.type(screen.getByLabelText("Espessura da medida"), "3");
-    await user.type(screen.getByLabelText("Largura da medida"), "5");
-    await user.clear(screen.getByLabelText("Comprimento da linha 1"));
-    await user.type(screen.getByLabelText("Comprimento da linha 1"), "2");
-    await user.type(screen.getByLabelText("Quantidade da linha 1"), "11");
-    await user.clear(screen.getByLabelText("Comprimento da linha 2"));
-    await user.type(screen.getByLabelText("Comprimento da linha 2"), "3");
-    await user.type(screen.getByLabelText("Quantidade da linha 2"), "7");
-    await user.click(screen.getByRole("button", { name: "Adicionar comprimentos ao romaneio" }));
+    fireEvent.change(screen.getByLabelText("Espessura da medida"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Largura da medida"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Comprimento da linha 1"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Quantidade da linha 1"), { target: { value: "11" } });
+    fireEvent.change(screen.getByLabelText("Comprimento da linha 2"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Quantidade da linha 2"), { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar comprimentos ao romaneio" }));
 
     expect(screen.getByText(/Cedrinho · 3 × 5 cm · 2 m/)).toBeInTheDocument();
     expect(screen.getByText(/11 peças/i)).toBeInTheDocument();

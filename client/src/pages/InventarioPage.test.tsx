@@ -1,5 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { ajustarMutate, perfilAtual, relatorioQuery, ajustesQuery } = vi.hoisted(() => ({
@@ -58,16 +57,14 @@ describe("InventarioPage", () => {
     expect(screen.getByText("45,0 dias")).toBeTruthy();
   });
 
-  it("regista a contagem física pelo fluxo de ajuste auditável", async () => {
-    const user = userEvent.setup();
+  it("regista a contagem física pelo fluxo de ajuste auditável", () => {
     render(<InventarioPage />);
 
-    await user.click(screen.getByRole("button", { name: "Ajustar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ajustar" }));
     expect(screen.getByRole("heading", { name: "Regularizar contagem de inventário" })).toBeTruthy();
-    await user.clear(screen.getByLabelText("Contagem física"));
-    await user.type(screen.getByLabelText("Contagem física"), "3");
-    await user.type(screen.getByLabelText("Motivo da regularização"), "Conferência física");
-    await user.click(screen.getByRole("button", { name: "Confirmar ajuste" }));
+    fireEvent.change(screen.getByLabelText("Contagem física"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Motivo da regularização"), { target: { value: "Conferência física" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ajuste" }));
 
     expect(ajustarMutate).toHaveBeenCalledWith(expect.objectContaining({ madeiraNome: "Itaúba", espessura: "3", largura: "5", comprimento: "2", quantidadeContada: 3, motivo: "Conferência física" }), expect.any(Object));
   });
