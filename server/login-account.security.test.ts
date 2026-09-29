@@ -4,14 +4,15 @@ const mocks = vi.hoisted(() => ({ db: null as any, queries: [] as Array<{ sql: s
 vi.mock("./repositories/core", () => ({ getDb: async () => mocks.db }));
 import { registrarFalhaAutenticacao } from "./repositories/identidade";
 describe("bloqueio de conta", () => {
-  it("calcula o limiar atomicamente no banco antes de incrementar o contador", async () => {
+  it("incrementa atomicamente e reinicia após 15 minutos sem falhas, sem gravar bloqueio", async () => {
     mocks.db = drizzle(async (sql, params) => { mocks.queries.push({ sql, params }); return { rows: [{ insertId: 0, affectedRows: 1 }] }; });
-    await registrarFalhaAutenticacao(8, null);
+    await registrarFalhaAutenticacao(8);
     const { sql, params } = mocks.queries[0];
-    expect(sql).toContain("CASE WHEN `credenciaisUsuarios`.`tentativasFalhas` + 1 >= 5");
-    expect(sql).toContain("DATE_ADD(NOW(), INTERVAL 15 MINUTE)");
-    expect(sql.indexOf("`bloqueadoAte` =")).toBeLessThan(sql.indexOf("`tentativasFalhas` ="));
+    expect(sql).toMatch(/CASE\s+WHEN `credenciaisUsuarios`\.`updatedAt` <= DATE_SUB\(NOW\(\), INTERVAL 15 MINUTE\) THEN 1/);
+    expect(sql).toContain("ELSE `credenciaisUsuarios`.`tentativasFalhas` + 1 END");
+    expect(sql).toContain("`bloqueadoAte` = NULL");
+    expect(sql).toContain("`updatedAt` = NOW()");
     expect(sql).toContain("where `credenciaisUsuarios`.`id` = ?");
-    expect(params).toEqual([null, 8]);
+    expect(params).toEqual([8]);
   });
 });

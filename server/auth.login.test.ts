@@ -16,6 +16,7 @@ vi.mock("./db", () => dbMocks);
 vi.mock("./autenticacao-local", () => ({
   COOKIE_SESSAO_LOCAL: "fk_sessao_local",
   DURACAO_SESSAO_LOCAL_MS: 12 * 60 * 60 * 1000,
+  HASH_SENHA_DUMMY: "scrypt$dummy$dummy",
   criarSessaoLocal: authMocks.criarSessaoLocal,
   gerarHashSenha: vi.fn(),
   normalizarEmail: authMocks.normalizarEmail,
@@ -45,17 +46,34 @@ describe("auth.entrar", () => {
     vi.clearAllMocks();
   });
 
-  it("bloqueia após cinco falhas e não autentica conta bloqueada", async () => {
+  it("rejeita a senha incorreta sem bloquear a conta", async () => {
     dbMocks.getCredencialPorEmail.mockResolvedValue({ credencial: { id: 8, senhaHash: "hash", bloqueadoAte: null, tentativasFalhas: 4 }, usuario: { id: 34, papel: "vendas" } });
     authMocks.validarSenha.mockResolvedValue(false);
     const { ctx } = createPublicContext();
     await expect(appRouter.createCaller(ctx).auth.entrar({ email: "a@example.com", senha: "errada" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    expect(dbMocks.registrarFalhaAutenticacao).toHaveBeenCalledWith(8, expect.any(Date));
-    const expiry = dbMocks.registrarFalhaAutenticacao.mock.calls[0][1] as Date;
-    expect(expiry.getTime() - Date.now()).toBeGreaterThan(890_000);
-    dbMocks.getCredencialPorEmail.mockResolvedValue({ credencial: { id: 8, bloqueadoAte: expiry }, usuario: { id: 34 } });
-    await expect(appRouter.createCaller(ctx).auth.entrar({ email: "a@example.com", senha: "correta" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(dbMocks.registrarFalhaAutenticacao).toHaveBeenCalledWith(8);
     expect(authMocks.criarSessaoLocal).not.toHaveBeenCalled();
+  });
+
+  it("executa a mesma verificação de senha sintética para e-mail inexistente", async () => {
+    dbMocks.getCredencialPorEmail.mockResolvedValue(undefined);
+    authMocks.validarSenha.mockResolvedValue(false);
+    const { ctx } = createPublicContext();
+    await expect(appRouter.createCaller(ctx).auth.entrar({ email: "ausente@example.com", senha: "errada" })).rejects.toMatchObject({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos." });
+    expect(authMocks.validarSenha).toHaveBeenCalledWith("errada", "scrypt$dummy$dummy");
+    expect(dbMocks.registrarFalhaAutenticacao).not.toHaveBeenCalled();
+  });
+
+  it("permite login legítimo mesmo com bloqueio legado ainda vigente", async () => {
+    dbMocks.getCredencialPorEmail.mockResolvedValue({
+      credencial: { id: 8, senhaHash: "hash", bloqueadoAte: new Date(Date.now() + 15 * 60_000), tentativasFalhas: 5 },
+      usuario: { id: 34, papel: "administrador" },
+    });
+    authMocks.validarSenha.mockResolvedValue(true);
+    const { ctx } = createPublicContext();
+    await expect(appRouter.createCaller(ctx).auth.entrar({ email: "admin@example.com", senha: "correta" })).resolves.toMatchObject({ success: true, papel: "administrador" });
+    expect(dbMocks.limparFalhasAutenticacao).toHaveBeenCalledWith(8);
+    expect(authMocks.criarSessaoLocal).toHaveBeenCalled();
   });
 
   it("não revela se o e-mail existe", async () => {

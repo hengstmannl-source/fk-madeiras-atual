@@ -100,15 +100,17 @@ export async function getCredencialPorEmail(emailNormalizado: string) {
   return result[0];
 }
 
-export async function registrarFalhaAutenticacao(credencialId: number, bloqueadoAte: Date | null) {
+export async function registrarFalhaAutenticacao(credencialId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  // MySQL evaluates single-table assignments left to right. Keep this order explicit;
-  // Drizzle .set() emits schema order, which would increment before checking the threshold.
+  // Contador atômico com janela de inatividade. Nunca bloqueia o acesso à conta:
+  // o custo progressivo é aplicado à resposta de senha incorreta no fluxo de login.
   await db.execute(sql`update ${credenciaisUsuarios}
-    set ${credenciaisUsuarios.bloqueadoAte} = CASE WHEN ${credenciaisUsuarios.tentativasFalhas} + 1 >= 5
-      THEN DATE_ADD(NOW(), INTERVAL 15 MINUTE) ELSE ${bloqueadoAte} END,
-      ${credenciaisUsuarios.tentativasFalhas} = ${credenciaisUsuarios.tentativasFalhas} + 1
+    set ${credenciaisUsuarios.tentativasFalhas} = CASE
+      WHEN ${credenciaisUsuarios.updatedAt} <= DATE_SUB(NOW(), INTERVAL 15 MINUTE) THEN 1
+      ELSE ${credenciaisUsuarios.tentativasFalhas} + 1 END,
+      ${credenciaisUsuarios.bloqueadoAte} = NULL,
+      ${credenciaisUsuarios.updatedAt} = NOW()
     where ${credenciaisUsuarios.id} = ${credencialId}`);
 }
 
