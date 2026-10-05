@@ -75,6 +75,43 @@ afterEach(() => {
 });
 
 describe("EstoquePage", () => {
+  it("abre o relatório para todos filtrados e depois para os selecionados mantendo o relatório de plaquetas", async () => {
+    const user = userEvent.setup();
+    render(<EstoquePage />);
+    expect(screen.getByRole("link", { name: "Relatório de plaquetas" })).toHaveAttribute("href", "/estoque/plaquetas");
+    await user.click(screen.getByRole("checkbox", { name: "Selecionar romaneio CAR-000001" }));
+    expect(screen.getByRole("button", { name: "PDF de romaneios (1 selecionados nos filtros)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Selecionar romaneio CAR-000001" }));
+    await user.click(screen.getByRole("button", { name: "PDF de romaneios (todos filtrados)" }));
+    expect(screen.getByTitle("Pré-visualização: Relatório de romaneios de carga")).toHaveAttribute("src", expect.stringContaining("/api/pdf/relatorio-romaneios-carga?"));
+  });
+
+  it("mostra o total do servidor em vez de somar a página e atualiza busca, situação e paginação", () => {
+    plaquetasListQuery.mockReturnValueOnce({ data: { itens: [], total: 276, totalVolumeFiltrado: 123.456, totalDisponiveis: 20, proximoDeslocamento: 10 }, isLoading: false } as any);
+    render(<EstoquePage />);
+    expect(screen.getByTestId("total-volume-plaquetas-filtrado")).toHaveTextContent("123,456 m³");
+    fireEvent.change(screen.getByLabelText("Pesquisar plaqueta ou essência"), { target: { value: "CEDRI" } });
+    expect(plaquetasListQuery).toHaveBeenLastCalledWith({ busca: "CEDRI", estado: undefined, limite: 10, deslocamento: 0 });
+    fireEvent.change(screen.getByLabelText("Filtrar situação das plaquetas"), { target: { value: "disponivel" } });
+    expect(plaquetasListQuery).toHaveBeenLastCalledWith({ busca: "CEDRI", estado: "disponivel", limite: 10, deslocamento: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "Próximas 10" }));
+    expect(plaquetasListQuery).toHaveBeenLastCalledWith({ busca: "CEDRI", estado: "disponivel", limite: 10, deslocamento: 10 });
+    fireEvent.change(screen.getByLabelText("Pesquisar plaqueta ou essência"), { target: { value: "ITAUBA" } });
+    expect(plaquetasListQuery).toHaveBeenLastCalledWith({ busca: "ITAUBA", estado: "disponivel", limite: 10, deslocamento: 0 });
+  });
+
+  it("inclui período, origem e seleção na URL do relatório", async () => {
+    const user = userEvent.setup();
+    render(<EstoquePage />);
+    fireEvent.change(screen.getByLabelText("Período inicial"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Período final"), { target: { value: "2026-09-30" } });
+    fireEvent.change(screen.getByLabelText("Filtrar por origem"), { target: { value: "Fazenda Norte" } });
+    await user.click(screen.getByRole("checkbox", { name: "Selecionar romaneio CAR-000001" }));
+    await user.click(screen.getByRole("button", { name: "PDF de romaneios (1 selecionados nos filtros)" }));
+    const iframe = screen.getByTitle("Pré-visualização: Relatório de romaneios de carga");
+    const url = new URL(iframe.getAttribute("src")!, "http://localhost");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ dataInicial: "2026-09-01", dataFinal: "2026-09-30", origem: "Fazenda Norte", ids: "1" });
+  });
   it("mantém Toras e Serrado em categorias próprias e oferece ações administrativas", async () => {
     const user = userEvent.setup();
     render(<EstoquePage />);

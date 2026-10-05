@@ -83,6 +83,65 @@ function validarAreaSeguraDoRodape() {
 describe("rotas de PDF protegidas", () => {
   const routes: Record<string, Handler> = {};
 
+  it("gera relatório com filtros, romaneios, totais por essência e total geral", async () => {
+    vi.spyOn(db, "getEmpresaConfiguracao").mockResolvedValue(undefined);
+    const consulta = vi.spyOn(db, "getRelatorioRomaneiosCarga").mockResolvedValue({
+      cargas: [{ id: 12, numero: "ROM-000012", dataCarga: new Date("2026-09-03T12:00:00Z"), origem: "Fazenda Norte" }],
+      essencias: [{ essencia: "CEDRINHO", quantidade: 12, volume: 1.125 }, { essencia: "ITAÚBA", quantidade: 3, volume: 0.375 }],
+      totalPlaquetas: 15, volumeTotal: 1.5,
+    } as any);
+    const res = createResponse();
+    await routes["/api/pdf/relatorio-romaneios-carga"]({ query: { dataInicial: "2026-09-01", dataFinal: "2026-09-30", origem: "Norte", ids: "12" } }, res);
+    expect(consulta).toHaveBeenCalledWith({ dataInicial: new Date(2026, 8, 1, 12), dataFinal: new Date(2026, 8, 30, 12), origem: "Norte", ids: [12] });
+    expect(textosDoPdf()).toContain("Período considerado: 01/09/2026 a 30/09/2026");
+    expect(textosDoPdf()).toContain("romaneios selecionados");
+    expect(textosDoPdf()).toContain("ROM-000012");
+    expect(textosDoPdf()).toContain("CEDRINHO 12 1,125");
+    expect(textosDoPdf()).toContain("ITAÚBA 3 0,375");
+    expect(textosDoPdf()).toContain("TOTAL GERAL: 15 toras/plaquetas | 1,5 m³");
+    expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "application/pdf");
+    expect(res.send).toHaveBeenCalledOnce();
+    validarAreaSeguraDoRodape();
+  });
+
+  it("pagina relatório extenso sem perder romaneios, essências ou totais", async () => {
+    vi.spyOn(db, "getEmpresaConfiguracao").mockResolvedValue(undefined);
+    vi.spyOn(db, "getRelatorioRomaneiosCarga").mockResolvedValue({
+      cargas: Array.from({ length: 90 }, (_, i) => ({ id: i + 1, numero: `ROM-${i + 1}`, dataCarga: new Date("2026-09-03T12:00:00Z"), origem: "Fazenda Norte" })),
+      essencias: Array.from({ length: 90 }, (_, i) => ({ essencia: `ESSÊNCIA ${i + 1}`, quantidade: 1, volume: 0.125 })),
+      totalPlaquetas: 90, volumeTotal: 11.25,
+    } as any);
+    const res = createResponse();
+    await routes["/api/pdf/relatorio-romaneios-carga"]({ query: {} }, res);
+    expect(pdfCanvas.pages.length).toBeGreaterThan(3);
+    expect(textosDoPdf()).toContain("todos os romaneios dos resultados filtrados");
+    expect(textosDoPdf()).toContain("ROM-90");
+    expect(textosDoPdf()).toContain("ESSÊNCIA 90");
+    expect(textosDoPdf()).toContain("TOTAL GERAL: 90 toras/plaquetas | 11,25 m³");
+    validarAreaSeguraDoRodape();
+  });
+
+  it.each([{ dataInicial: "2026-02-30" }, { dataInicial: "2026-10-01", dataFinal: "2026-09-01" }, { ids: "0,12" }, { ids: "abc" }])("rejeita filtros inválidos: %j", async query => {
+    const consulta = vi.spyOn(db, "getRelatorioRomaneiosCarga");
+    const res = createResponse();
+    await routes["/api/pdf/relatorio-romaneios-carga"]({ query }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(consulta).not.toHaveBeenCalled();
+  });
+
+  it("protege o relatório e informa resultados vazios", async () => {
+    const consulta = vi.spyOn(db, "getRelatorioRomaneiosCarga").mockResolvedValue({ cargas: [], essencias: [], totalPlaquetas: 0, volumeTotal: 0 });
+    const vazio = createResponse();
+    await routes["/api/pdf/relatorio-romaneios-carga"]({ query: {} }, vazio);
+    expect(vazio.status).toHaveBeenCalledWith(404);
+    consulta.mockClear();
+    localAuthMocks.lerSessaoLocal.mockReturnValue(undefined);
+    const semSessao = createResponse();
+    await routes["/api/pdf/relatorio-romaneios-carga"]({ query: {} }, semSessao);
+    expect(semSessao.status).toHaveBeenCalledWith(401);
+    expect(consulta).not.toHaveBeenCalled();
+  });
+
 beforeEach(async () => {
   Object.keys(routes).forEach((key) => delete routes[key]);
   vi.restoreAllMocks();

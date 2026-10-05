@@ -181,7 +181,7 @@ export async function getRastreabilidadePlaqueta(plaquetaId: number) {
 export async function listPlaquetas(parametros: { busca?: string; estado?: "disponivel" | "consumida" | "cancelada"; limite?: number; deslocamento?: number } = {}) {
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
-  if (!db) return { itens: [], total: 0, totalDisponiveis: 0, totalVolumeDisponivel: 0, volumeMedioPorTora: 0, essenciasDisponiveis: [], alertaVariacaoAtipica: false, essenciasAtipicas: [], variacoesAtipicas: [], proximoDeslocamento: null };
+  if (!db) return { itens: [], total: 0, totalVolumeFiltrado: 0, totalDisponiveis: 0, totalVolumeDisponivel: 0, volumeMedioPorTora: 0, essenciasDisponiveis: [], alertaVariacaoAtipica: false, essenciasAtipicas: [], variacoesAtipicas: [], proximoDeslocamento: null };
   const brutas = ordenarPlaquetasPorEntradaMaisRecente(await db.select().from(plaquetas).where(eq(plaquetas.empresaId, empresaId)).orderBy(desc(plaquetas.createdAt), desc(plaquetas.id)));
   const todas = numerarDuplicidadesPlaquetas(brutas);
   const termo = (parametros.busca ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
@@ -191,6 +191,8 @@ export async function listPlaquetas(parametros: { busca?: string; estado?: "disp
     return codigo.includes(termo) || essencia.includes(termo);
   }) : todas;
   const filtradas = parametros.estado ? porBusca.filter((item) => item.estado === parametros.estado) : porBusca;
+  // Mesmo volume exibido na grade, calculado antes da paginação no servidor.
+  const totalVolumeFiltrado = filtradas.reduce((total, item) => total + Number(item.volumeDisponivel ?? 0), 0);
   const limite = Math.min(Math.max(parametros.limite ?? 10, 1), 500);
   const deslocamento = Math.max(parametros.deslocamento ?? 0, 0);
   const itens = filtradas.slice(deslocamento, deslocamento + limite);
@@ -232,7 +234,7 @@ export async function listPlaquetas(parametros: { busca?: string; estado?: "disp
   const variacoesAtipicas = variacoesIdentificadas.filter((item) => assinaturasConferidas.get(item.essencia) !== item.assinatura);
   const essenciasAtipicas = variacoesAtipicas.map((item) => item.essencia);
   const alertaVariacaoAtipica = variacoesAtipicas.length > 0;
-  return { itens, total: filtradas.length, totalDisponiveis: disponiveis.length, totalVolumeDisponivel, volumeMedioPorTora: Number(volumeMedioPorTora.toFixed(3)), essenciasDisponiveis, alertaVariacaoAtipica, essenciasAtipicas, variacoesAtipicas, proximoDeslocamento };
+  return { itens, total: filtradas.length, totalVolumeFiltrado, totalDisponiveis: disponiveis.length, totalVolumeDisponivel, volumeMedioPorTora: Number(volumeMedioPorTora.toFixed(3)), essenciasDisponiveis, alertaVariacaoAtipica, essenciasAtipicas, variacoesAtipicas, proximoDeslocamento };
 }
 
 export async function confirmarVariacoesAtipicasPlaquetas(variacoes: Array<{ essencia: string; assinatura: string }>, confirmadoPor: number) {
@@ -330,6 +332,25 @@ export async function listRomaneiosCargaToras(filtros: { dataInicial?: Date; dat
   ];
   const resultado = await db.select().from(romaneiosCargaToras).where(and(...condicoes)).orderBy(desc(romaneiosCargaToras.dataCarga), desc(romaneiosCargaToras.id));
   return origem ? resultado.filter((item) => (item.origem ?? "").toLocaleLowerCase("pt-BR").includes(origem)) : resultado;
+}
+
+export async function getRelatorioRomaneiosCarga(filtros: { dataInicial?: Date; dataFinal?: Date; origem?: string; ids?: number[] } = {}) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const filtradas = await listRomaneiosCargaToras(filtros);
+  const cargas = filtros.ids ? filtradas.filter(item => filtros.ids!.includes(item.id)) : filtradas;
+  if (!cargas.length) return { cargas, essencias: [], totalPlaquetas: 0, volumeTotal: 0 };
+  // Volume de entrada, como no PDF individual; consumo posterior não altera a carga.
+  const grupos = await db.select({
+    essencia: sql<string>`upper(trim(${plaquetas.madeiraNome}))`,
+    quantidade: sql<number>`count(*)`,
+    volume: sql<string>`coalesce(sum(${plaquetas.volumeInicial}), 0)`,
+  }).from(plaquetas).where(and(eq(plaquetas.empresaId, empresaId), inArray(plaquetas.romaneioCargaId, cargas.map(item => item.id))))
+    .groupBy(sql`upper(trim(${plaquetas.madeiraNome}))`);
+  const essencias = grupos.map(item => ({ essencia: item.essencia || "Essência não informada", quantidade: Number(item.quantidade), volume: Number(item.volume) }))
+    .sort((a, b) => a.essencia.localeCompare(b.essencia, "pt-BR"));
+  return { cargas, essencias, totalPlaquetas: essencias.reduce((total, item) => total + item.quantidade, 0), volumeTotal: essencias.reduce((total, item) => total + item.volume, 0) };
 }
 
 export async function getRomaneioCargaComPlaquetas(id: number) {

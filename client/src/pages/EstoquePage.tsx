@@ -217,6 +217,7 @@ function taxaFrete(item: any) {
 
 export default function EstoquePage() {
   const [categoria, setCategoria] = useState<"toras" | "serrado">("toras");
+  const [relatorioCargasUrl, setRelatorioCargasUrl] = useState<string | null>(null);
   const [filtrosCargas, setFiltrosCargas] = useState({
     dataInicial: "",
     dataFinal: "",
@@ -545,6 +546,7 @@ export default function EstoquePage() {
 
   const plaquetasVisiveis = plaquetas.data?.itens ?? [];
   const torasDisponiveis = plaquetas.data?.totalDisponiveis ?? 0;
+  const cargasSelecionadasNoFiltro = (cargas.data ?? []).filter(item => cargasSelecionadas.includes(item.id)).map(item => item.id);
   const podeExcluirRomaneio = user?.role === "admin";
   const edicaoSomenteCabecalhoCarga = Boolean(cargaEmEdicao && detalheCarga.data?.plaquetas.some((plaqueta: any) => plaqueta.estado !== "disponivel"));
   const salvando = criarCarga.isPending || atualizarCarga.isPending || atualizarCabecalhoCargasLote.isPending;
@@ -822,6 +824,15 @@ export default function EstoquePage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" disabled={!cargas.data?.length || cargas.isFetching || (cargasSelecionadas.length > 0 && cargasSelecionadasNoFiltro.length === 0)} onClick={() => {
+                  const parametros = new URLSearchParams();
+                  for (const [campo, valor] of Object.entries(filtrosCargasAtivos)) if (valor) parametros.set(campo, valor);
+                  if (cargasSelecionadas.length) parametros.set("ids", cargasSelecionadasNoFiltro.join(","));
+                  setRelatorioCargasUrl(`/api/pdf/relatorio-romaneios-carga?${parametros.toString()}`);
+                }}>
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                  {cargasSelecionadas.length ? `PDF de romaneios (${cargasSelecionadasNoFiltro.length} selecionados nos filtros)` : "PDF de romaneios (todos filtrados)"}
+                </Button>
                 <Button size="sm" variant="outline" asChild>
                   <Link href="/estoque/plaquetas">
                     <FileWarning className="mr-1.5 h-3.5 w-3.5" />
@@ -1034,6 +1045,9 @@ export default function EstoquePage() {
                   </select>
                 </Campo>
               </div>
+            </div>
+            <div className="border-b bg-muted/30 px-5 py-3 text-sm" role="status" data-testid="total-volume-plaquetas-filtrado">
+              Volume total dos resultados filtrados: {plaquetas.isFetching || plaquetas.isLoading ? "Calculando…" : plaquetas.isError ? "Não foi possível calcular o total." : <strong>{formatarNumero(plaquetas.data?.totalVolumeFiltrado ?? 0, 3)} m³</strong>}
             </div>
             {plaquetas.isLoading ? (
               <Carregando />
@@ -1313,6 +1327,13 @@ export default function EstoquePage() {
         </section>
       )}
       <Dialog open={edicaoLoteCargasAberta} onOpenChange={aberto => { if (!aberto) setEdicaoLoteCargasAberta(false); }}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>Alterar cabeçalho de romaneios de carga</DialogTitle><DialogDescription>As plaquetas, volumes, valores e fretes das cargas não serão modificados. Marque somente os campos que devem receber o novo valor nos {cargasSelecionadas.length} romaneio(s) selecionados.</DialogDescription></DialogHeader><div className="space-y-3"><CampoLote marcado={camposLoteCargas.dataCarga} aoAlternar={marcado => setCamposLoteCargas(atual => ({ ...atual, dataCarga: marcado }))} rotulo="Data da carga"><Input type="date" disabled={!camposLoteCargas.dataCarga} value={cabecalhoLoteCargas.dataCarga} onChange={evento => setCabecalhoLoteCargas(atual => ({ ...atual, dataCarga: evento.target.value }))} /></CampoLote><CampoLote marcado={camposLoteCargas.dataVencimento} aoAlternar={marcado => setCamposLoteCargas(atual => ({ ...atual, dataVencimento: marcado }))} rotulo="Vencimento"><Input type="date" disabled={!camposLoteCargas.dataVencimento} value={cabecalhoLoteCargas.dataVencimento} onChange={evento => setCabecalhoLoteCargas(atual => ({ ...atual, dataVencimento: evento.target.value }))} /></CampoLote><CampoLote marcado={camposLoteCargas.origem} aoAlternar={marcado => setCamposLoteCargas(atual => ({ ...atual, origem: marcado }))} rotulo="Origem"><Input disabled={!camposLoteCargas.origem} value={cabecalhoLoteCargas.origem} onChange={evento => setCabecalhoLoteCargas(atual => ({ ...atual, origem: evento.target.value }))} placeholder="Fazenda, cidade ou origem" /></CampoLote><CampoLote marcado={camposLoteCargas.fornecedorId} aoAlternar={marcado => setCamposLoteCargas(atual => ({ ...atual, fornecedorId: marcado }))} rotulo="Fornecedor"><SearchableEntitySelect value={cabecalhoLoteCargas.fornecedorId} onValueChange={fornecedorId => setCabecalhoLoteCargas(atual => ({ ...atual, fornecedorId }))} disabled={!camposLoteCargas.fornecedorId} options={(fornecedores.data ?? []).map((fornecedor: any) => ({ value: String(fornecedor.id), label: fornecedor.nome, details: fornecedor.documento ?? "" }))} placeholder="Selecionar fornecedor" searchPlaceholder="Buscar fornecedor" ariaLabel="Fornecedor para alteração em lote" /></CampoLote><CampoLote marcado={camposLoteCargas.responsavel} aoAlternar={marcado => setCamposLoteCargas(atual => ({ ...atual, responsavel: marcado }))} rotulo="Responsável"><Input disabled={!camposLoteCargas.responsavel} value={cabecalhoLoteCargas.responsavel} onChange={evento => setCabecalhoLoteCargas(atual => ({ ...atual, responsavel: evento.target.value }))} /></CampoLote><CampoLote marcado={camposLoteCargas.observacoes} aoAlternar={marcado => setCamposLoteCargas(atual => ({ ...atual, observacoes: marcado }))} rotulo="Observações"><Textarea disabled={!camposLoteCargas.observacoes} value={cabecalhoLoteCargas.observacoes} onChange={evento => setCabecalhoLoteCargas(atual => ({ ...atual, observacoes: evento.target.value }))} /></CampoLote><div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={() => setEdicaoLoteCargasAberta(false)}>Cancelar</Button><Button onClick={salvarCabecalhoLoteCargas} disabled={atualizarCabecalhoCargasLote.isPending}>{atualizarCabecalhoCargasLote.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Aplicar alterações</Button></div></div></DialogContent></Dialog>
+      <PdfPreviewDialog
+        open={Boolean(relatorioCargasUrl)}
+        onOpenChange={aberto => { if (!aberto) setRelatorioCargasUrl(null); }}
+        url={relatorioCargasUrl}
+        title="Relatório de romaneios de carga"
+        description="Confira o período, os romaneios incluídos e os totais por essência antes de baixar."
+      />
       <PdfPreviewDialog
         open={Boolean(cargaParaPdf)}
         onOpenChange={aberto => {

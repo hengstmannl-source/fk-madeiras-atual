@@ -1,4 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { z } from "zod";
+import { dataCalendarioValida } from "../shared/validacaoData";
+import { getRelatorioRomaneiosCarga } from "./db";
 import { getEmpresaUnica, getEmpresaConfiguracao, getOrcamentoWithItems, getRomaneioCargaComPlaquetas, getRomaneioProducaoComItens, getUserById, listClientes } from "./db";
 import { COOKIE_SESSAO_LOCAL, lerSessaoLocal } from "./autenticacao-local";
 import { storageGetSignedUrl } from "./storage";
@@ -256,7 +259,83 @@ function criarLayoutPdf(pdfDoc: any, font: any, boldFont: any, logo: any, titulo
   };
 }
 
+export function desenharRelatorioRomaneiosCarga(
+  pdfDoc: PDFDocument, font: any, boldFont: any, logo: any,
+  dados: Awaited<ReturnType<typeof getRelatorioRomaneiosCarga>>,
+  filtros: { dataInicial?: string; dataFinal?: string; origem?: string; ids?: number[] },
+) {
+  const layout = criarLayoutPdf(pdfDoc, font, boldFont, logo, "Relatório de romaneios de carga");
+  const largura = layout.width - MARGEM_LATERAL * 2;
+  const escrever = (texto: string, destaque = false) => layout.escreverParagrafo(texto, MARGEM_LATERAL, largura, 9, destaque ? { font: boldFont, color: COR_MARROM } : {}, 15);
+  const dataFiltro = (data?: string) => data ? data.split("-").reverse().join("/") : "Sem limite";
+  escrever(`Período considerado: ${dataFiltro(filtros.dataInicial)} a ${dataFiltro(filtros.dataFinal)}`);
+  escrever(`Origem pesquisada: ${filtros.origem || "Todas"}`);
+  escrever(filtros.ids ? "Escopo: romaneios selecionados que correspondem aos filtros." : "Escopo: todos os romaneios dos resultados filtrados.");
+  escrever("Volumes de entrada das plaquetas (volume inicial), independentemente do consumo posterior.");
+  layout.mover(10);
+  escrever(`ROMANEIOS INCLUÍDOS (${dados.cargas.length})`, true);
+  for (const carga of dados.cargas) {
+    escrever(`${carga.numero} | ${formatDate(carga.dataCarga, true)} | Origem: ${carga.origem || "Não informada"}`);
+  }
+  layout.mover(12);
+  const cabecalho = () => {
+    layout.garantirEspaco(45);
+    escrever("TOTAIS POR ESSÊNCIA", true);
+    desenharTextoAjustado(layout.page, boldFont, "Essência", MARGEM_LATERAL, layout.y, 280, 9);
+    desenharTextoAjustado(layout.page, boldFont, "Toras/plaquetas", 340, layout.y, 95, 9);
+    desenharTextoAjustado(layout.page, boldFont, "Volume (m³)", 450, layout.y, 97, 9);
+    layout.mover(19);
+  };
+  cabecalho();
+  for (const item of dados.essencias) {
+    const linhas = quebrarTexto(font, item.essencia, 280, 9);
+    for (let indice = 0; indice < linhas.length; indice++) {
+      if (!layout.temEspaco(18)) { layout.novaPagina(true); cabecalho(); }
+      layout.page.drawText(linhas[indice], { x: MARGEM_LATERAL, y: layout.y, size: 9, font });
+      if (indice === 0) {
+        layout.page.drawText(String(item.quantidade), { x: 340, y: layout.y, size: 9, font });
+        desenharTextoAjustado(layout.page, font, formatMeasurement(item.volume), 450, layout.y, 97, 9);
+      }
+      layout.mover(18);
+    }
+  }
+  layout.garantirEspaco(45);
+  layout.mover(10);
+  escrever(`TOTAL GERAL: ${dados.totalPlaquetas} toras/plaquetas | ${formatMeasurement(dados.volumeTotal)} m³`, true);
+}
+
 export async function registerPdfRoutes(app: any) {
+  app.get("/api/pdf/relatorio-romaneios-carga", async (req: any, res: any) => {
+    try {
+      const empresaId = await getEmpresaPdfAtiva(req, res);
+      if (!empresaId) return;
+      const dataSchema = z.string().refine(dataCalendarioValida, "Data inválida").optional();
+      const parametros = z.object({
+        dataInicial: dataSchema, dataFinal: dataSchema,
+        origem: z.string().trim().max(200).optional(),
+        ids: z.string().max(60000).regex(/^[1-9]\d*(,[1-9]\d*)*$/).transform(valor => Array.from(new Set(valor.split(",").map(Number)))).refine(ids => ids.every(Number.isSafeInteger)).optional(),
+      }).refine(valor => !valor.dataInicial || !valor.dataFinal || valor.dataInicial <= valor.dataFinal).safeParse(req.query ?? {});
+      if (!parametros.success) return res.status(400).json({ error: "Filtros do relatório inválidos" });
+      const filtros = parametros.data;
+      // Mesma conversão de datas usada na rota de listagem de cargas.
+      const dataLocal = (valor?: string) => {
+        if (!valor) return undefined;
+        const [ano, mes, dia] = valor.split("-").map(Number);
+        return new Date(ano, mes - 1, dia, 12, 0, 0);
+      };
+      const dados = await getRelatorioRomaneiosCarga({ ...filtros, dataInicial: dataLocal(filtros.dataInicial), dataFinal: dataLocal(filtros.dataFinal) });
+      if (!dados.cargas.length) return res.status(404).json({ error: "Nenhum romaneio encontrado para os filtros e a seleção informados" });
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const logo = await loadCompanyLogo(pdfDoc, empresaId);
+      desenharRelatorioRomaneiosCarga(pdfDoc, font, boldFont, logo, dados, filtros);
+      responderPdf(req, res, await pdfDoc.save(), "relatorio-romaneios-carga.pdf");
+    } catch (err) {
+      console.error("Relatório de cargas PDF generation error:", err);
+      res.status(500).json({ error: "Erro ao gerar relatório de romaneios de carga" });
+    }
+  });
   app.get("/api/pdf/orcamento/:id", async (req: any, res: any) => {
     try {
       const empresaId = await getEmpresaPdfAtiva(req, res);
