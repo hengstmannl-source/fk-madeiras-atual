@@ -179,19 +179,45 @@ export async function getRastreabilidadePlaqueta(plaquetaId: number) {
   return { plaqueta, origem, consumo: consumo[0] ?? null, regularizacoes };
 }
 
-export async function listPlaquetas(parametros: { busca?: string; estado?: "disponivel" | "consumida" | "cancelada"; limite?: number; deslocamento?: number } = {}) {
-  const empresaId = (await getEmpresaUnica()).id;
-  const db = await getDb();
-  if (!db) return { itens: [], total: 0, totalVolumeFiltrado: 0, totalDisponiveis: 0, totalVolumeDisponivel: 0, volumeMedioPorTora: 0, essenciasDisponiveis: [], alertaVariacaoAtipica: false, essenciasAtipicas: [], variacoesAtipicas: [], proximoDeslocamento: null };
-  const brutas = ordenarPlaquetasPorEntradaMaisRecente(await db.select().from(plaquetas).where(eq(plaquetas.empresaId, empresaId)).orderBy(desc(plaquetas.createdAt), desc(plaquetas.id)));
-  const todas = numerarDuplicidadesPlaquetas(brutas);
+type FiltrosPlaquetas = { busca?: string; estado?: "disponivel" | "consumida" | "cancelada" };
+
+function filtrarPlaquetas<T extends { codigo: string; codigoFisico?: string | null; madeiraNome: string; estado: string }>(todas: T[], parametros: FiltrosPlaquetas) {
   const termo = (parametros.busca ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
   const porBusca = termo ? todas.filter((item) => {
     const codigo = `${item.codigo} ${item.codigoFisico ?? ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
     const essencia = item.madeiraNome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
     return codigo.includes(termo) || essencia.includes(termo);
   }) : todas;
-  const filtradas = parametros.estado ? porBusca.filter((item) => item.estado === parametros.estado) : porBusca;
+  return parametros.estado ? porBusca.filter((item) => item.estado === parametros.estado) : porBusca;
+}
+
+export async function getRelatorioPlaquetasEstoque(parametros: FiltrosPlaquetas = {}) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const brutas = await db.select().from(plaquetas).where(eq(plaquetas.empresaId, empresaId)).orderBy(desc(plaquetas.createdAt), desc(plaquetas.id));
+  const itens = filtrarPlaquetas(numerarDuplicidadesPlaquetas(ordenarPlaquetasPorEntradaMaisRecente(brutas)), parametros);
+  const grupos = new Map<string, { essencia: string; quantidade: number; volume: number }>();
+  const volumes = { disponivel: 0, consumida: 0, cancelada: 0 };
+  for (const item of itens) {
+    const essencia = item.madeiraNome.trim().toLocaleUpperCase("pt-BR") || "Essência não informada";
+    const grupo = grupos.get(essencia) ?? { essencia, quantidade: 0, volume: 0 };
+    const volume = volumePlaquetaPorSituacao(item);
+    grupo.quantidade++;
+    grupo.volume += volume;
+    volumes[item.estado] += volume;
+    grupos.set(essencia, grupo);
+  }
+  return { itens, essencias: Array.from(grupos.values()).sort((a, b) => a.essencia.localeCompare(b.essencia, "pt-BR")), total: itens.length, volumeTotal: itens.reduce((total, item) => total + volumePlaquetaPorSituacao(item), 0), volumes };
+}
+
+export async function listPlaquetas(parametros: FiltrosPlaquetas & { limite?: number; deslocamento?: number } = {}) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) return { itens: [], total: 0, totalVolumeFiltrado: 0, totalDisponiveis: 0, totalVolumeDisponivel: 0, volumeMedioPorTora: 0, essenciasDisponiveis: [], alertaVariacaoAtipica: false, essenciasAtipicas: [], variacoesAtipicas: [], proximoDeslocamento: null };
+  const brutas = ordenarPlaquetasPorEntradaMaisRecente(await db.select().from(plaquetas).where(eq(plaquetas.empresaId, empresaId)).orderBy(desc(plaquetas.createdAt), desc(plaquetas.id)));
+  const todas = numerarDuplicidadesPlaquetas(brutas);
+  const filtradas = filtrarPlaquetas(todas, parametros);
   // Disponíveis usam saldo; consumidas/canceladas preservam o volume registrado.
   // A soma considera todas as páginas sem alterar os indicadores de disponibilidade.
   const totalVolumeFiltrado = filtradas.reduce((total, item) => total + volumePlaquetaPorSituacao(item), 0);

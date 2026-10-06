@@ -219,6 +219,7 @@ function taxaFrete(item: any) {
 export default function EstoquePage() {
   const [categoria, setCategoria] = useState<"toras" | "serrado">("toras");
   const [relatorioCargasUrl, setRelatorioCargasUrl] = useState<string | null>(null);
+  const [relatorioPlaquetasUrl, setRelatorioPlaquetasUrl] = useState<string | null>(null);
   const [filtrosCargas, setFiltrosCargas] = useState({
     dataInicial: "",
     dataFinal: "",
@@ -1047,9 +1048,17 @@ export default function EstoquePage() {
                 </Campo>
               </div>
             </div>
-            <div className="border-b bg-muted/30 px-5 py-3 text-sm" role="status" data-testid="total-volume-plaquetas-filtrado">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 px-5 py-3">
+            <div className="text-sm" role="status" data-testid="total-volume-plaquetas-filtrado">
               {estadoPlaquetas === "consumida" ? "Volume consumido dos resultados filtrados" : estadoPlaquetas === "disponivel" ? "Volume disponível dos resultados filtrados" : estadoPlaquetas === "cancelada" ? "Volume das plaquetas canceladas filtradas" : "Volume total das plaquetas filtradas (todas as situações)"}: {plaquetas.isFetching || plaquetas.isLoading ? "Calculando…" : plaquetas.isError ? "Não foi possível calcular o total." : <strong>{formatarNumero(plaquetas.data?.totalVolumeFiltrado ?? 0, 3)} m³</strong>}
               {estadoPlaquetas !== "disponivel" && <p className="mt-1 text-xs text-muted-foreground">Volumes de plaquetas consumidas ou canceladas não representam saldo disponível para serrar.</p>}
+            </div>
+            <Button size="sm" variant="outline" disabled={!plaquetas.data?.total || plaquetas.isFetching || plaquetas.isError} onClick={() => {
+              const parametros = new URLSearchParams();
+              if (buscaPlaquetas) parametros.set("busca", buscaPlaquetas);
+              if (estadoPlaquetas) parametros.set("estado", estadoPlaquetas);
+              setRelatorioPlaquetasUrl(`/api/pdf/plaquetas-estoque?${parametros.toString()}`);
+            }}><FileText className="mr-1.5 h-3.5 w-3.5" />PDF de plaquetas (todos filtrados)</Button>
             </div>
             {plaquetas.isLoading ? (
               <Carregando />
@@ -1335,6 +1344,13 @@ export default function EstoquePage() {
         url={relatorioCargasUrl}
         title="Relatório de romaneios de carga"
         description="Confira o período, os romaneios incluídos e os totais por essência antes de baixar."
+      />
+      <PdfPreviewDialog
+        open={Boolean(relatorioPlaquetasUrl)}
+        onOpenChange={aberto => { if (!aberto) setRelatorioPlaquetasUrl(null); }}
+        url={relatorioPlaquetasUrl}
+        title="Relatório de plaquetas no estoque"
+        description="Confira a pesquisa, a situação, as plaquetas incluídas e os totais de todas as páginas antes de baixar."
       />
       <PdfPreviewDialog
         open={Boolean(cargaParaPdf)}

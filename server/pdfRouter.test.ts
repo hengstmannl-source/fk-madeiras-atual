@@ -83,6 +83,55 @@ function validarAreaSeguraDoRodape() {
 describe("rotas de PDF protegidas", () => {
   const routes: Record<string, Handler> = {};
 
+  it("gera PDF de estoque com pesquisa, situação, plaquetas e volumes consumidos", async () => {
+    vi.spyOn(db, "getEmpresaConfiguracao").mockResolvedValue(undefined);
+    const consulta = vi.spyOn(db, "getRelatorioPlaquetasEstoque").mockResolvedValue({
+      itens: [{ codigo: "INT-4", codigoFisico: "3725", indiceDuplicidade: 4, madeiraNome: "CEDRINHO", estado: "consumida", diametro: "53", comprimento: "4", volumeInicial: "0.882", volumeDisponivel: "0" }],
+      total: 1, volumeTotal: 0.882, essencias: [{ essencia: "CEDRINHO", quantidade: 1, volume: 0.882 }], volumes: { disponivel: 0, consumida: 0.882, cancelada: 0 },
+    } as any);
+    const res = createResponse();
+    await routes["/api/pdf/plaquetas-estoque"]({ query: { busca: "CEDRI", estado: "consumida", download: "1" } }, res);
+    expect(consulta).toHaveBeenCalledWith({ busca: "CEDRI", estado: "consumida" });
+    expect(textosDoPdf()).toContain("Pesquisa: CEDRI");
+    expect(textosDoPdf()).toContain("Situação: Consumida");
+    expect(textosDoPdf()).toContain("TOTAL GERAL: 1 plaquetas | 0,882 m³");
+    expect(textosDoPdf()).toContain("CEDRINHO: 1 plaquetas | 0,882 m³");
+    expect(textosDoPdf()).toContain("3725 (4)");
+    expect(res.setHeader).toHaveBeenCalledWith("Content-Disposition", 'attachment; filename="relatorio-plaquetas-estoque.pdf"');
+    validarAreaSeguraDoRodape();
+  });
+
+  it("pagina as plaquetas do PDF e preserva o último resultado", async () => {
+    vi.spyOn(db, "getEmpresaConfiguracao").mockResolvedValue(undefined);
+    vi.spyOn(db, "getRelatorioPlaquetasEstoque").mockResolvedValue({
+      itens: Array.from({ length: 90 }, (_, i) => ({ codigo: `PLQ-${i + 1}`, madeiraNome: "CEDRINHO", estado: "disponivel", volumeDisponivel: "0.125" })),
+      total: 90, volumeTotal: 11.25, essencias: [{ essencia: "CEDRINHO", quantidade: 90, volume: 11.25 }], volumes: { disponivel: 11.25, consumida: 0, cancelada: 0 },
+    } as any);
+    await routes["/api/pdf/plaquetas-estoque"]({ query: {} }, createResponse());
+    expect(textosDoPdf()).toContain("Situação: Todas");
+    expect(textosDoPdf()).toContain("PLQ-90");
+    expect(pdfCanvas.pages.length).toBeGreaterThan(2);
+    expect(textosDaPagina(1)).toContain("PLAQUETAS INCLUÍDAS");
+    validarAreaSeguraDoRodape();
+  });
+
+  it("valida filtros, resultados vazios e autenticação do PDF de plaquetas", async () => {
+    const consulta = vi.spyOn(db, "getRelatorioPlaquetasEstoque").mockResolvedValue({ itens: [], total: 0 } as any);
+    const invalido = createResponse();
+    await routes["/api/pdf/plaquetas-estoque"]({ query: { estado: "inexistente" } }, invalido);
+    expect(invalido.status).toHaveBeenCalledWith(400);
+    expect(consulta).not.toHaveBeenCalled();
+    const vazio = createResponse();
+    await routes["/api/pdf/plaquetas-estoque"]({ query: {} }, vazio);
+    expect(vazio.status).toHaveBeenCalledWith(404);
+    consulta.mockClear();
+    localAuthMocks.lerSessaoLocal.mockReturnValue(undefined);
+    const semSessao = createResponse();
+    await routes["/api/pdf/plaquetas-estoque"]({ query: {} }, semSessao);
+    expect(semSessao.status).toHaveBeenCalledWith(401);
+    expect(consulta).not.toHaveBeenCalled();
+  });
+
   it("gera relatório com filtros, romaneios, totais por essência e total geral", async () => {
     vi.spyOn(db, "getEmpresaConfiguracao").mockResolvedValue(undefined);
     const consulta = vi.spyOn(db, "getRelatorioRomaneiosCarga").mockResolvedValue({

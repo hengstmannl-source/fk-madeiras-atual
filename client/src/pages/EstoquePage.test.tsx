@@ -75,6 +75,19 @@ afterEach(() => {
 });
 
 describe("EstoquePage", () => {
+  it("abre PDF de todas as plaquetas filtradas sem limitar à página atual", async () => {
+    const user = userEvent.setup();
+    render(<EstoquePage />);
+    fireEvent.change(screen.getByLabelText("Pesquisar plaqueta ou essência"), { target: { value: "CEDRI" } });
+    fireEvent.change(screen.getByLabelText("Filtrar situação das plaquetas"), { target: { value: "consumida" } });
+    await user.click(screen.getByRole("button", { name: "Próximas 10" }));
+    await user.click(screen.getByRole("button", { name: "PDF de plaquetas (todos filtrados)" }));
+    const iframe = screen.getByTitle("Pré-visualização: Relatório de plaquetas no estoque");
+    const url = new URL(iframe.getAttribute("src")!, "http://localhost");
+    expect(url.pathname).toBe("/api/pdf/plaquetas-estoque");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ busca: "CEDRI", estado: "consumida" });
+    expect(screen.getByRole("button", { name: "Confirmar download" })).toBeInTheDocument();
+  });
   it("mostra o volume registrado das consumidas e identifica o resumo por situação", () => {
     plaquetasListQuery.mockReturnValueOnce({ data: { itens: [{ id: 9, codigo: "CONSUMIDA-9", madeiraNome: "Cedrinho", volumeInicial: "1.750000", volumeDisponivel: "0", estado: "consumida" }], total: 25, totalVolumeFiltrado: 20.5, totalDisponiveis: 5, proximoDeslocamento: 10 }, isLoading: false } as any);
     render(<EstoquePage />);

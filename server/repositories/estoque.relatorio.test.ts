@@ -5,7 +5,7 @@ import { plaquetas, romaneiosCargaToras } from "../../drizzle/schema";
 vi.mock("./identidade", () => ({ getEmpresaUnica: vi.fn(async () => ({ id: 7 })) }));
 vi.mock("./core", () => ({ getDb: vi.fn() }));
 import { getDb } from "./core";
-import { getRelatorioRomaneiosCarga, listPlaquetas } from "./estoque";
+import { getRelatorioRomaneiosCarga, getRelatorioPlaquetasEstoque, listPlaquetas } from "./estoque";
 
 const itens = Array.from({ length: 25 }, (_, indice) => ({
   id: indice + 1, codigo: `PLQ-${indice + 1}`, codigoFisico: String(indice + 1),
@@ -28,6 +28,23 @@ beforeEach(() => {
 });
 
 describe("volume filtrado de plaquetas", () => {
+  it("gera relatório de todas as plaquetas com os mesmos filtros e volumes da grade", async () => {
+    const relatorio = await getRelatorioPlaquetasEstoque();
+    expect(relatorio).toMatchObject({ total: 25, volumeTotal: 4.625, volumes: { disponivel: 1.625, consumida: 3, cancelada: 0 } });
+    expect(relatorio.essencias).toEqual([{ essencia: "CÉDRINHO", quantidade: 20, volume: 3.75 }, { essencia: "ITAÚBA", quantidade: 5, volume: 0.875 }]);
+    const consumidas = await getRelatorioPlaquetasEstoque({ busca: "CEDRI", estado: "consumida" });
+    expect(consumidas).toMatchObject({ total: 10, volumeTotal: 2.5 });
+    expect(consumidas.itens.every(item => item.estado === "consumida")).toBe(true);
+    expect((await getRelatorioPlaquetasEstoque({ busca: "inexistente" })).total).toBe(0);
+  });
+
+  it("inclui mais de 500 resultados e mantém a identificação de plaquetas duplicadas", async () => {
+    orderBy.mockResolvedValue(Array.from({ length: 525 }, (_, i) => ({ ...itens[0], id: i + 1, codigo: `INT-${i}`, codigoFisico: "REPETIDA" })));
+    const resultado = await getRelatorioPlaquetasEstoque();
+    expect(resultado.itens).toHaveLength(525);
+    expect(resultado.volumeTotal).toBe(65.625);
+    expect(resultado.itens[0].indiceDuplicidade).toBe(525);
+  });
   it.each([
     [{}, 25, 4.625],
     [{ estado: "disponivel" as const }, 13, 1.625],

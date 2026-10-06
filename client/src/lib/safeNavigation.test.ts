@@ -23,6 +23,7 @@ describe("safeInternalRedirectPath", () => {
 
 describe("safePdfUrl", () => {
   it("allows the application's PDF endpoints", () => {
+    expect(safePdfUrl("/api/pdf/plaquetas-estoque?busca=CEDRI&estado=consumida", origin)).toBe("/api/pdf/plaquetas-estoque?busca=CEDRI&estado=consumida");
     expect(safePdfUrl("/api/pdf/relatorio-romaneios-carga?origem=Norte&ids=12", origin)).toBe("/api/pdf/relatorio-romaneios-carga?origem=Norte&ids=12");
     expect(safePdfUrl("/api/pdf/orcamento/42", origin)).toBe(
       "/api/pdf/orcamento/42",

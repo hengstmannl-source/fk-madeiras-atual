@@ -1,4 +1,4 @@
-const PDF_ENDPOINT_PATH = /^\/api\/pdf\/(?:(?:orcamento|recibo|romaneio|romaneio-carga)\/\d+|relatorio-romaneios-carga)$/;
+const PDF_ENDPOINT_PATH = /^\/api\/pdf\/(?:(?:orcamento|recibo|romaneio|romaneio-carga)\/\d+|relatorio-romaneios-carga|plaquetas-estoque)$/;
 
 export function safeInternalRedirectPath(
   candidate: string,

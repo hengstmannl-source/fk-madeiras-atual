@@ -1,7 +1,8 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { z } from "zod";
 import { dataCalendarioValida } from "../shared/validacaoData";
-import { getRelatorioRomaneiosCarga } from "./db";
+import { getRelatorioRomaneiosCarga, getRelatorioPlaquetasEstoque } from "./db";
+import { volumePlaquetaPorSituacao } from "../shared/volumePlaqueta";
 import { getEmpresaUnica, getEmpresaConfiguracao, getOrcamentoWithItems, getRomaneioCargaComPlaquetas, getRomaneioProducaoComItens, getUserById, listClientes } from "./db";
 import { COOKIE_SESSAO_LOCAL, lerSessaoLocal } from "./autenticacao-local";
 import { storageGetSignedUrl } from "./storage";
@@ -304,7 +305,73 @@ export function desenharRelatorioRomaneiosCarga(
   escrever(`TOTAL GERAL: ${dados.totalPlaquetas} toras/plaquetas | ${formatMeasurement(dados.volumeTotal)} m³`, true);
 }
 
+export function desenharRelatorioPlaquetasEstoque(
+  pdfDoc: PDFDocument, font: any, boldFont: any, logo: any,
+  dados: Awaited<ReturnType<typeof getRelatorioPlaquetasEstoque>>,
+  filtros: { busca?: string; estado?: string },
+) {
+  const layout = criarLayoutPdf(pdfDoc, font, boldFont, logo, "Relatório de plaquetas no estoque");
+  const largura = layout.width - MARGEM_LATERAL * 2;
+  const escrever = (texto: string, destaque = false) => layout.escreverParagrafo(texto, MARGEM_LATERAL, largura, 9, destaque ? { font: boldFont, color: COR_MARROM } : {}, 15);
+  const estados: Record<string, string> = { disponivel: "Disponível", consumida: "Consumida", cancelada: "Cancelada" };
+  escrever(`Pesquisa: ${filtros.busca || "Todas as plaquetas e essências"}`);
+  escrever(`Situação: ${estados[filtros.estado ?? ""] || "Todas"}`);
+  escrever("Escopo: todos os resultados filtrados, incluindo todas as páginas.");
+  escrever("Disponíveis: saldo para serrar. Consumidas e canceladas: volume registrado, sem saldo disponível.");
+  escrever(`TOTAL GERAL: ${dados.total} plaquetas | ${formatMeasurement(dados.volumeTotal)} m³`, true);
+  escrever(`Disponíveis: ${formatMeasurement(dados.volumes.disponivel)} m³ | Consumidas: ${formatMeasurement(dados.volumes.consumida)} m³ | Canceladas: ${formatMeasurement(dados.volumes.cancelada)} m³`);
+  layout.mover(12);
+  escrever("RESUMO POR ESSÊNCIA", true);
+  for (const grupo of dados.essencias) escrever(`${grupo.essencia}: ${grupo.quantidade} plaquetas | ${formatMeasurement(grupo.volume)} m³`);
+  layout.mover(12);
+  const colunas = [90, 140, 70, 60, 55, 84];
+  const cabecalho = () => {
+    layout.garantirEspaco(45);
+    escrever("PLAQUETAS INCLUÍDAS", true);
+    let x = MARGEM_LATERAL;
+    ["Código", "Essência", "Situação", "Diâm. (cm)", "Comp. (m)", "Volume (m³)"].forEach((titulo, indice) => {
+      desenharTextoAjustado(layout.page, boldFont, titulo, x, layout.y, colunas[indice] - 5, 8);
+      x += colunas[indice];
+    });
+    layout.mover(18);
+  };
+  cabecalho();
+  for (const item of dados.itens) {
+    // Índices em texto comum preservam duplicidades sem depender de glifos sobrescritos.
+    const codigo = item.codigoFisico ? `${item.codigoFisico}${(item.indiceDuplicidade ?? 0) > 1 ? ` (${item.indiceDuplicidade})` : ""}` : item.codigo;
+    const valores = [codigo, item.madeiraNome, estados[item.estado], item.diametro ? formatMeasurement(item.diametro) : "-", item.comprimento ? formatMeasurement(item.comprimento) : "-", formatMeasurement(volumePlaquetaPorSituacao(item))];
+    const linhas = valores.map((valor, indice) => quebrarTexto(font, valor, colunas[indice] - 5, 8));
+    const altura = Math.max(...linhas.map(coluna => coluna.length), 1) * 12 + 5;
+    if (!layout.temEspaco(altura)) { layout.novaPagina(true); cabecalho(); }
+    let x = MARGEM_LATERAL;
+    linhas.forEach((coluna, indice) => {
+      coluna.forEach((linha, posicao) => layout.page.drawText(linha, { x, y: layout.y - posicao * 12, size: 8, font }));
+      x += colunas[indice];
+    });
+    layout.mover(altura);
+  }
+}
+
 export async function registerPdfRoutes(app: any) {
+  app.get("/api/pdf/plaquetas-estoque", async (req: any, res: any) => {
+    try {
+      const empresaId = await getEmpresaPdfAtiva(req, res);
+      if (!empresaId) return;
+      const parametros = z.object({ busca: z.string().trim().max(200).optional(), estado: z.enum(["disponivel", "consumida", "cancelada"]).optional() }).safeParse(req.query ?? {});
+      if (!parametros.success) return res.status(400).json({ error: "Filtros do relatório inválidos" });
+      const dados = await getRelatorioPlaquetasEstoque(parametros.data);
+      if (!dados.total) return res.status(404).json({ error: "Nenhuma plaqueta encontrada para os filtros informados" });
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const logo = await loadCompanyLogo(pdfDoc, empresaId);
+      desenharRelatorioPlaquetasEstoque(pdfDoc, font, boldFont, logo, dados, parametros.data);
+      responderPdf(req, res, await pdfDoc.save(), "relatorio-plaquetas-estoque.pdf");
+    } catch (err) {
+      console.error("Plaquetas estoque PDF generation error:", err);
+      res.status(500).json({ error: "Erro ao gerar relatório de plaquetas no estoque" });
+    }
+  });
   app.get("/api/pdf/relatorio-romaneios-carga", async (req: any, res: any) => {
     try {
       const empresaId = await getEmpresaPdfAtiva(req, res);
