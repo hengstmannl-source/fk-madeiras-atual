@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { etiquetaPlaqueta } from "@shared/plaquetas";
+import { volumePlaquetaPorSituacao } from "@shared/volumePlaqueta";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -1047,7 +1048,8 @@ export default function EstoquePage() {
               </div>
             </div>
             <div className="border-b bg-muted/30 px-5 py-3 text-sm" role="status" data-testid="total-volume-plaquetas-filtrado">
-              Volume total dos resultados filtrados: {plaquetas.isFetching || plaquetas.isLoading ? "Calculando…" : plaquetas.isError ? "Não foi possível calcular o total." : <strong>{formatarNumero(plaquetas.data?.totalVolumeFiltrado ?? 0, 3)} m³</strong>}
+              {estadoPlaquetas === "consumida" ? "Volume consumido dos resultados filtrados" : estadoPlaquetas === "disponivel" ? "Volume disponível dos resultados filtrados" : estadoPlaquetas === "cancelada" ? "Volume das plaquetas canceladas filtradas" : "Volume total das plaquetas filtradas (todas as situações)"}: {plaquetas.isFetching || plaquetas.isLoading ? "Calculando…" : plaquetas.isError ? "Não foi possível calcular o total." : <strong>{formatarNumero(plaquetas.data?.totalVolumeFiltrado ?? 0, 3)} m³</strong>}
+              {estadoPlaquetas !== "disponivel" && <p className="mt-1 text-xs text-muted-foreground">Volumes de plaquetas consumidas ou canceladas não representam saldo disponível para serrar.</p>}
             </div>
             {plaquetas.isLoading ? (
               <Carregando />
@@ -1094,7 +1096,7 @@ export default function EstoquePage() {
                               : "—"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatarNumero(item.volumeDisponivel)} m³
+                            {formatarNumero(volumePlaquetaPorSituacao(item))} m³
                           </TableCell>
                           <TableCell className="text-right">
                             {formatarMoeda(item.valorMetroCubico)}

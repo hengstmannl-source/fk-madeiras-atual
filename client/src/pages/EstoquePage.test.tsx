@@ -75,6 +75,17 @@ afterEach(() => {
 });
 
 describe("EstoquePage", () => {
+  it("mostra o volume registrado das consumidas e identifica o resumo por situação", () => {
+    plaquetasListQuery.mockReturnValueOnce({ data: { itens: [{ id: 9, codigo: "CONSUMIDA-9", madeiraNome: "Cedrinho", volumeInicial: "1.750000", volumeDisponivel: "0", estado: "consumida" }], total: 25, totalVolumeFiltrado: 20.5, totalDisponiveis: 5, proximoDeslocamento: 10 }, isLoading: false } as any);
+    render(<EstoquePage />);
+    expect(screen.getByRole("cell", { name: "1,75 m³" })).toBeInTheDocument();
+    expect(screen.getByTestId("total-volume-plaquetas-filtrado")).toHaveTextContent("20,5 m³");
+    expect(screen.getByTestId("total-volume-plaquetas-filtrado")).toHaveTextContent("todas as situações");
+    fireEvent.change(screen.getByLabelText("Filtrar situação das plaquetas"), { target: { value: "consumida" } });
+    expect(screen.getByTestId("total-volume-plaquetas-filtrado")).toHaveTextContent("Volume consumido dos resultados filtrados");
+    fireEvent.change(screen.getByLabelText("Filtrar situação das plaquetas"), { target: { value: "disponivel" } });
+    expect(screen.getByTestId("total-volume-plaquetas-filtrado")).toHaveTextContent("Volume disponível dos resultados filtrados");
+  });
   it("abre o relatório para todos filtrados e depois para os selecionados mantendo o relatório de plaquetas", async () => {
     const user = userEvent.setup();
     render(<EstoquePage />);

@@ -25,6 +25,7 @@ import { calcularCustoAbastecimentoDiesel, calcularResumoTanqueDiesel, validarEx
 import { criarModeloCsvExtratoBancario, prepararImportacaoExtrato } from "../conciliacao.intercambio";
 import { sugerirConciliacoes } from "../conciliacao.logic";
 import { numerarDuplicidadesPlaquetas } from "../../shared/plaquetas";
+import { volumePlaquetaPorSituacao } from "../../shared/volumePlaqueta";
 
 import { getDb } from "./core";
 import { getEmpresaUnica } from "./identidade";
@@ -191,8 +192,9 @@ export async function listPlaquetas(parametros: { busca?: string; estado?: "disp
     return codigo.includes(termo) || essencia.includes(termo);
   }) : todas;
   const filtradas = parametros.estado ? porBusca.filter((item) => item.estado === parametros.estado) : porBusca;
-  // Mesmo volume exibido na grade, calculado antes da paginação no servidor.
-  const totalVolumeFiltrado = filtradas.reduce((total, item) => total + Number(item.volumeDisponivel ?? 0), 0);
+  // Disponíveis usam saldo; consumidas/canceladas preservam o volume registrado.
+  // A soma considera todas as páginas sem alterar os indicadores de disponibilidade.
+  const totalVolumeFiltrado = filtradas.reduce((total, item) => total + volumePlaquetaPorSituacao(item), 0);
   const limite = Math.min(Math.max(parametros.limite ?? 10, 1), 500);
   const deslocamento = Math.max(parametros.deslocamento ?? 0, 0);
   const itens = filtradas.slice(deslocamento, deslocamento + limite);

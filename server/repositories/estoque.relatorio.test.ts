@@ -29,12 +29,13 @@ beforeEach(() => {
 
 describe("volume filtrado de plaquetas", () => {
   it.each([
-    [{}, 25, 1.625],
+    [{}, 25, 4.625],
     [{ estado: "disponivel" as const }, 13, 1.625],
-    [{ estado: "consumida" as const }, 12, 0],
-    [{ busca: "CEDRI" }, 20, 1.25],
+    [{ estado: "consumida" as const }, 12, 3],
+    [{ busca: "CEDRI" }, 20, 3.75],
+    [{ busca: "CEDRI", estado: "consumida" as const }, 10, 2.5],
     [{ busca: "CEDRI", estado: "disponivel" as const }, 10, 1.25],
-    [{ busca: "itauba" }, 5, 0.375],
+    [{ busca: "itauba" }, 5, 0.875],
     [{ busca: "PLQ-25" }, 1, 0.125],
     [{ busca: "inexistente" }, 0, 0],
   ])("respeita busca e situação: %j", async (filtros, total, volume) => {
@@ -48,7 +49,8 @@ describe("volume filtrado de plaquetas", () => {
   it("mantém o mesmo total em todas as páginas e não devolve o estoque completo", async () => {
     for (const deslocamento of [0, 10, 20]) {
       const resultado = await listPlaquetas({ deslocamento, limite: 10 });
-      expect(resultado.totalVolumeFiltrado).toBe(1.625);
+      expect(resultado.totalVolumeFiltrado).toBe(4.625);
+      expect(resultado.totalVolumeDisponivel).toBe(1.625);
       expect(resultado.total).toBe(25);
       expect(resultado.itens.length).toBe(deslocamento === 20 ? 5 : 10);
     }
@@ -57,6 +59,16 @@ describe("volume filtrado de plaquetas", () => {
   it("retorna total zero quando não há conexão", async () => {
     vi.mocked(getDb).mockResolvedValue(null);
     expect(await listPlaquetas()).toMatchObject({ totalVolumeFiltrado: 0, itens: [] });
+  });
+
+  it("não estima volumes históricos ausentes e distingue canceladas do saldo disponível", async () => {
+    orderBy.mockResolvedValue([
+      { ...itens[0], estado: "consumida", volumeInicial: "0", volumeDisponivel: "0" },
+      { ...itens[1], estado: "cancelada", volumeInicial: "0.500000", volumeDisponivel: "0" },
+    ]);
+    expect(await listPlaquetas({ estado: "consumida" })).toMatchObject({ totalVolumeFiltrado: 0, totalVolumeDisponivel: 0 });
+    expect(await listPlaquetas({ estado: "cancelada" })).toMatchObject({ totalVolumeFiltrado: 0.5, totalVolumeDisponivel: 0 });
+    expect(await listPlaquetas()).toMatchObject({ totalVolumeFiltrado: 0.5, totalVolumeDisponivel: 0 });
   });
 });
 
