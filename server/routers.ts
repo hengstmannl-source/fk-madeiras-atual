@@ -14,7 +14,6 @@ import { madeiraRouter } from "./routers/madeira";
 import { bitolaRouter } from "./routers/bitola";
 import { clienteRouter } from "./routers/cliente";
 import { orcamentoRouter } from "./routers/orcamento";
-import { dashboardRouter } from "./routers/dashboard";
 import { empresaRouter } from "./routers/empresa";
 import { financeiroRouter } from "./routers/financeiro";
 import { producaoRouter } from "./routers/producao";
@@ -119,7 +118,6 @@ export const appRouter = router({
   bitola: bitolaRouter,
   cliente: clienteRouter,
   orcamento: orcamentoRouter,
-  dashboard: dashboardRouter,
   empresa: empresaRouter,
   financeiro: financeiroRouter,
   producao: producaoRouter,

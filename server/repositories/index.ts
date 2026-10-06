@@ -3,7 +3,6 @@ export * from "./catalogo";
 export * from "./vendas";
 export * from "./financeiro";
 export * from "./documentos";
-export * from "./dashboard";
 export * from "./estoque";
 export * from "./producao";
 export * from "./diesel";
