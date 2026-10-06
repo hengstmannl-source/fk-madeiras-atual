@@ -9,6 +9,7 @@ import { storageGetSignedUrl } from "./storage";
 import { etiquetaPlaqueta } from "../shared/plaquetas";
 import { calcularAproveitamentoPorEssencia } from "../shared/aproveitamentoPorEssencia";
 import { resumirPecasPdfPorEssencia, type GrupoBitolaPdfProducao, type ResumoEssenciaPdfProducao } from "./pdf.producao.logic";
+import { mensagemDeBloqueioPorPerfil } from "./_core/trpc";
 
 const A4: [number, number] = [595, 842];
 const MARGEM_LATERAL = 48;
@@ -134,17 +135,38 @@ function desenharTextoAjustado(page: any, font: any, texto: unknown, x: number, 
   page.drawText(truncarTexto(font, texto, larguraMaxima, tamanho), { x, y, size: tamanho, font, ...opcoes });
 }
 
-async function getEmpresaPdfAtiva(req: any, res: any): Promise<number | null> {
+async function getEmpresaPdfAtiva(req: any, res: any, caminhoDoModulo: "orcamento" | "producao"): Promise<number | null> {
+  let user: Awaited<ReturnType<typeof getUserById>> | null = null;
+  let empresaId: number | null = null;
   try {
-    let user: { id: number } | null = null;
     const sessao = lerSessaoLocal(req.headers?.cookie?.split(";").map((parte: string) => parte.trim()).find((parte: string) => parte.startsWith(`${COOKIE_SESSAO_LOCAL}=`))?.slice(COOKIE_SESSAO_LOCAL.length + 1));
     if (sessao) user = (await getUserById(sessao.usuarioId)) ?? null;
-    if (user) return (await getEmpresaUnica()).id;
+    if (user) empresaId = (await getEmpresaUnica()).id;
   } catch {
     // A mesma resposta é usada para sessão ausente ou inválida.
+    user = null;
   }
-  res.status(401).json({ error: "Autenticação necessária para aceder a este documento" });
-  return null;
+  if (!user) {
+    res.status(401).json({ error: "Autenticação necessária para aceder a este documento" });
+    return null;
+  }
+  if (!user.papel) {
+    res.status(403).json({ error: "O seu utilizador não possui um perfil operacional ativo." });
+    return null;
+  }
+
+  const bloqueioPorPerfil = mensagemDeBloqueioPorPerfil({
+    papel: user.papel,
+    papelPlataforma: user.role,
+    caminho: caminhoDoModulo,
+    tipo: "query",
+  });
+  if (bloqueioPorPerfil) {
+    res.status(403).json({ error: bloqueioPorPerfil });
+    return null;
+  }
+
+  return empresaId;
 }
 
 /** Mantém o documento inline para a pré-visualização e usa anexo somente após confirmação do utilizador. */
@@ -355,7 +377,7 @@ export function desenharRelatorioPlaquetasEstoque(
 export async function registerPdfRoutes(app: any) {
   app.get("/api/pdf/plaquetas-estoque", async (req: any, res: any) => {
     try {
-      const empresaId = await getEmpresaPdfAtiva(req, res);
+      const empresaId = await getEmpresaPdfAtiva(req, res, "producao");
       if (!empresaId) return;
       const parametros = z.object({ busca: z.string().trim().max(200).optional(), estado: z.enum(["disponivel", "consumida", "cancelada"]).optional() }).safeParse(req.query ?? {});
       if (!parametros.success) return res.status(400).json({ error: "Filtros do relatório inválidos" });
@@ -374,7 +396,7 @@ export async function registerPdfRoutes(app: any) {
   });
   app.get("/api/pdf/relatorio-romaneios-carga", async (req: any, res: any) => {
     try {
-      const empresaId = await getEmpresaPdfAtiva(req, res);
+      const empresaId = await getEmpresaPdfAtiva(req, res, "producao");
       if (!empresaId) return;
       const dataSchema = z.string().refine(dataCalendarioValida, "Data inválida").optional();
       const parametros = z.object({
@@ -405,7 +427,7 @@ export async function registerPdfRoutes(app: any) {
   });
   app.get("/api/pdf/orcamento/:id", async (req: any, res: any) => {
     try {
-      const empresaId = await getEmpresaPdfAtiva(req, res);
+      const empresaId = await getEmpresaPdfAtiva(req, res, "orcamento");
       if (!empresaId) return;
       const id = parseInt(req.params.id);
       if (Number.isNaN(id)) return res.status(400).json({ error: "ID inválido" });
@@ -721,7 +743,7 @@ export async function registerPdfRoutes(app: any) {
 
   app.get("/api/pdf/recibo/:id", async (req: any, res: any) => {
     try {
-      const empresaId = await getEmpresaPdfAtiva(req, res);
+      const empresaId = await getEmpresaPdfAtiva(req, res, "orcamento");
       if (!empresaId) return;
       const id = parseInt(req.params.id);
       if (Number.isNaN(id)) return res.status(400).json({ error: "ID inválido" });
@@ -787,7 +809,7 @@ export async function registerPdfRoutes(app: any) {
 
   app.get("/api/pdf/romaneio/:id", async (req: any, res: any) => {
     try {
-      const empresaId = await getEmpresaPdfAtiva(req, res);
+      const empresaId = await getEmpresaPdfAtiva(req, res, "producao");
       if (!empresaId) return;
       const id = parseInt(req.params.id);
       if (Number.isNaN(id)) return res.status(400).json({ error: "ID inválido" });
@@ -1007,7 +1029,7 @@ export async function registerPdfRoutes(app: any) {
 
   app.get("/api/pdf/romaneio-carga/:id", async (req: any, res: any) => {
     try {
-      const empresaId = await getEmpresaPdfAtiva(req, res);
+      const empresaId = await getEmpresaPdfAtiva(req, res, "producao");
       if (!empresaId) return;
       const id = parseInt(req.params.id);
       if (Number.isNaN(id)) return res.status(400).json({ error: "ID inválido" });

@@ -201,7 +201,7 @@ beforeEach(async () => {
     expiraEm: Date.now() + 1000 * 60 * 60,
   });
 
-  vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1 } as any);
+  vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel: "proprietario", role: "user" } as any);
   vi.spyOn(db, "getEmpresaUnica").mockResolvedValue({ id: 1 } as any);
 
   pdfCanvas.drawText.mockClear();
@@ -222,6 +222,102 @@ await registerPdfRoutes({
       );
   },
 });
+});
+
+describe("autorização HTTP das rotas PDF por módulo", () => {
+  const routes: Record<string, Handler> = {};
+  const rotasVendas = [
+    { rota: "/api/pdf/orcamento/:id", req: { params: { id: "1" } } },
+    { rota: "/api/pdf/recibo/:id", req: { params: { id: "1" } } },
+  ];
+  const rotasProducao = [
+    { rota: "/api/pdf/plaquetas-estoque", req: { query: {} } },
+    { rota: "/api/pdf/relatorio-romaneios-carga", req: { query: {} } },
+    { rota: "/api/pdf/romaneio/:id", req: { params: { id: "1" } } },
+    { rota: "/api/pdf/romaneio-carga/:id", req: { params: { id: "1" } } },
+  ];
+  const perfisVendas = ["proprietario", "administrador", "vendas"];
+  const perfisProducao = ["proprietario", "administrador", "producao"];
+  const perfisSemAcessoVendas = ["financeiro", "rh", "producao"];
+  const perfisSemAcessoProducao = ["financeiro", "rh", "vendas"];
+
+  function prepararDadosPdfSemResultados() {
+    vi.spyOn(db, "getOrcamentoWithItems").mockResolvedValue(undefined);
+    vi.spyOn(db, "getRelatorioPlaquetasEstoque").mockResolvedValue({ itens: [], total: 0 } as any);
+    vi.spyOn(db, "getRelatorioRomaneiosCarga").mockResolvedValue({ cargas: [], essencias: [], totalPlaquetas: 0, volumeTotal: 0 } as any);
+    vi.spyOn(db, "getRomaneioProducaoComItens").mockResolvedValue(null);
+    vi.spyOn(db, "getRomaneioCargaComPlaquetas").mockResolvedValue(undefined);
+  }
+
+  beforeEach(async () => {
+    Object.keys(routes).forEach((key) => delete routes[key]);
+    vi.restoreAllMocks();
+    localAuthMocks.lerSessaoLocal.mockReset().mockReturnValue({ usuarioId: 1, expiraEm: Date.now() + 60_000 });
+    vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel: "proprietario", role: "user" } as any);
+    vi.spyOn(db, "getEmpresaUnica").mockResolvedValue({ id: 1 } as any);
+    await registerPdfRoutes({
+      get: (path: string, handler: Handler) => {
+        routes[path] = (req, res) => handler({ ...req, headers: { cookie: `${COOKIE_SESSAO_LOCAL}=teste` } }, res);
+      },
+    });
+  });
+
+  const casosPermitidos = [
+    ...rotasVendas.flatMap((rota) => perfisVendas.map((papel) => ({ ...rota, papel }))),
+    ...rotasProducao.flatMap((rota) => perfisProducao.map((papel) => ({ ...rota, papel }))),
+  ];
+  it.each(casosPermitidos)("permite $papel em $rota", async ({ rota, req, papel }) => {
+    prepararDadosPdfSemResultados();
+    vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel, role: "user" } as any);
+    const res = createResponse();
+
+    await routes[rota](req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.status).not.toHaveBeenCalledWith(401);
+    expect(res.status).not.toHaveBeenCalledWith(403);
+  });
+
+  const casosNegados = [
+    ...rotasVendas.flatMap((rota) => perfisSemAcessoVendas.map((papel) => ({ ...rota, papel }))),
+    ...rotasProducao.flatMap((rota) => perfisSemAcessoProducao.map((papel) => ({ ...rota, papel }))),
+  ];
+  it.each(casosNegados)("nega $papel em $rota com 403", async ({ rota, req, papel }) => {
+    vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel, role: "user" } as any);
+    const res = createResponse();
+
+    await routes[rota](req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  const todasRotas = [...rotasVendas, ...rotasProducao];
+  it.each(todasRotas)("retorna 401 sem sessão em $rota", async ({ rota, req }) => {
+    localAuthMocks.lerSessaoLocal.mockReturnValue(undefined);
+    const res = createResponse();
+
+    await routes[rota](req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it.each(todasRotas)("retorna 403 para usuário sem papel em $rota", async ({ rota, req }) => {
+    vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel: null, role: "user" } as any);
+    const res = createResponse();
+
+    await routes[rota](req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it.each(todasRotas)("retorna 403 para papel operacional desconhecido em $rota", async ({ rota, req }) => {
+    vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel: "perfil_inexistente", role: "user" } as any);
+    const res = createResponse();
+
+    await routes[rota](req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
 });
 
   it("rejeita PDF de romaneio quando não há utilizador autenticado", async () => {
