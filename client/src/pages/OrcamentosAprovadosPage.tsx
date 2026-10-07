@@ -14,6 +14,7 @@ import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { PdfPreviewDialog } from "@/components/PdfPreviewDialog";
 import { PageHeader } from "@/components/PageHeader";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 const FORMAS_PAGAMENTO = [
   ["pix", "PIX"],
@@ -54,8 +55,14 @@ const CATEGORIAS = {
 
 type CategoriaOperacional = keyof typeof CATEGORIAS;
 type FormaPagamento = (typeof FORMAS_PAGAMENTO)[number][0];
+type FormaRecebimento = FormaPagamento | "cheque";
+const FORMAS_RECEBIMENTO = [...FORMAS_PAGAMENTO, ["cheque", "Cheque"]] as const;
+const PAPEIS_OPERACIONAIS: readonly string[] = ["proprietario", "administrador", "financeiro", "rh", "vendas", "producao"];
+const PAPEIS_FINANCEIRO: readonly string[] = ["proprietario", "administrador", "financeiro"];
+const PAPEIS_VENDAS: readonly string[] = ["proprietario", "administrador", "vendas"];
 type ModalidadeEntrega = "retirada" | "entrega";
 type AlvoVenda = { id: number; numero: string; entregue: boolean; pago: boolean };
+type AlvoRecebimento = { id: number; numero: string; clienteId: number; total: string };
 type AlvoCondicaoPagamento = AlvoVenda & { clienteNome: string; total: string };
 type TipoCondicaoPagamento = "avista" | "parcelado";
 type ModoVencimento = "dias" | "datas";
@@ -88,7 +95,7 @@ function distribuirValorEmParcelas(valorTotal: string, quantidade: number) {
 }
 
 function descricaoFormaPagamento(forma?: string | null) {
-  return FORMAS_PAGAMENTO.find(([valor]) => valor === forma)?.[1] ?? "Não informada";
+  return FORMAS_RECEBIMENTO.find(([valor]) => valor === forma)?.[1] ?? "Não informada";
 }
 
 function descricaoModalidadeEntrega(modalidade?: string | null) {
@@ -104,8 +111,25 @@ function categoriaDaRota(localizacao: string): CategoriaOperacional {
 
 const formatarMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
+function valorNumerico(valor: string | number | null | undefined) {
+  if (typeof valor === "number") return valor;
+  const texto = String(valor ?? "").trim();
+  const normalizado = texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto;
+  return Number(normalizado) || 0;
+}
+
+function normalizarValorEntrada(valor: string) {
+  const texto = valor.trim();
+  return texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto;
+}
+
 export default function OrcamentosAprovadosPage() {
   const [location, setLocation] = useLocation();
+  const { user } = useAuth();
+  // These checks control button visibility only; protected backend procedures remain authoritative.
+  const papelOperacionalValido = Boolean(user?.papel && PAPEIS_OPERACIONAIS.includes(user.papel));
+  const podeRegistrarRecebimento = papelOperacionalValido && Boolean(user && (user.role === "admin" || PAPEIS_FINANCEIRO.includes(user.papel ?? "")));
+  const podeQuitarIntegralmente = papelOperacionalValido && Boolean(user && (user.role === "admin" || PAPEIS_VENDAS.includes(user.papel ?? "")));
   const categoria = categoriaDaRota(location);
   const configuracao = CATEGORIAS[categoria];
   const vendas = trpc.orcamento.list.useQuery({ estado: "aprovado", categoria });
@@ -113,6 +137,20 @@ export default function OrcamentosAprovadosPage() {
   const clientes = trpc.cliente.list.useQuery();
   const estoqueSerrado = trpc.producao.estoque.resumo.useQuery();
   const registrarPagamento = trpc.orcamento.registrarPagamento.useMutation();
+  const registrarBaixa = trpc.financeiro.titulos.baixar.useMutation();
+  const [recebimentoAlvo, setRecebimentoAlvo] = useState<AlvoRecebimento | null>(null);
+  const [tituloRecebimentoId, setTituloRecebimentoId] = useState("");
+  const [valorRecebimento, setValorRecebimento] = useState("");
+  const [formaRecebimento, setFormaRecebimento] = useState<FormaRecebimento>("pix");
+  const [contaRecebimentoId, setContaRecebimentoId] = useState("");
+  const [dataRecebimento, setDataRecebimento] = useState(dataLocalDeHoje);
+  const [observacoesRecebimento, setObservacoesRecebimento] = useState("");
+  const [chequesRecebidos, setChequesRecebidos] = useState<Array<{ referencia: string; valor: string; dataCompensacao: string }>>([]);
+  const resumoRecebimentos = trpc.financeiro.titulos.recebimentosVenda.useQuery(
+    { orcamentoId: recebimentoAlvo?.id ?? 0 },
+    { enabled: Boolean(recebimentoAlvo) },
+  );
+  const contasFinanceiras = trpc.financeiro.contas.list.useQuery(undefined, { enabled: Boolean(recebimentoAlvo) });
   const configurarCondicaoPagamento = trpc.orcamento.configurarCondicaoPagamento.useMutation();
   const entregarFisicamente = trpc.orcamento.entregarFisicamente.useMutation();
   const utils = trpc.useUtils();
@@ -137,6 +175,33 @@ export default function OrcamentosAprovadosPage() {
     { id: condicaoPagamentoAlvo?.id ?? 0 },
     { enabled: Boolean(condicaoPagamentoAlvo) },
   );
+
+  const titulosComSaldo = (resumoRecebimentos.data?.titulos ?? []).filter((titulo: any) => titulo.estado !== "cancelado" && Number(titulo.saldoAberto) > 0);
+  const contaSelecionada = (contasFinanceiras.data ?? []).find((conta: any) => String(conta.id) === contaRecebimentoId);
+  const contasDisponiveis = (contasFinanceiras.data ?? []).filter((conta: any) => conta.ativa && (formaRecebimento === "cheque" ? conta.tipo === "caixa_cheque" : conta.tipo !== "caixa_cheque"));
+  const valorChequeTotal = chequesRecebidos.reduce((total, cheque) => total + valorNumerico(cheque.valor), 0);
+  const chequesValidos = formaRecebimento !== "cheque" || (
+    chequesRecebidos.length > 0
+    && chequesRecebidos.every((cheque) => cheque.referencia.trim() && valorNumerico(cheque.valor) > 0)
+    && Math.round(valorChequeTotal * 100) === Math.round(valorNumerico(valorRecebimento) * 100)
+  );
+
+  useEffect(() => {
+    if (!recebimentoAlvo || !titulosComSaldo.length) {
+      setTituloRecebimentoId("");
+      return;
+    }
+    if (!titulosComSaldo.some((titulo: any) => String(titulo.id) === tituloRecebimentoId)) {
+      setTituloRecebimentoId(String(titulosComSaldo[0].id));
+    }
+  }, [recebimentoAlvo, resumoRecebimentos.data, tituloRecebimentoId]);
+
+  useEffect(() => {
+    if (!recebimentoAlvo) return;
+    if (!contasDisponiveis.some((conta: any) => String(conta.id) === contaRecebimentoId)) {
+      setContaRecebimentoId(contasDisponiveis[0] ? String(contasDisponiveis[0].id) : "");
+    }
+  }, [recebimentoAlvo, formaRecebimento, contasFinanceiras.data, contaRecebimentoId]);
 
   const clienteMap = useMemo(() => new Map(clientes.data?.map((cliente) => [cliente.id, cliente.nome]) ?? []), [clientes.data]);
   const vendasFiltradas = useMemo(() => {
@@ -241,6 +306,51 @@ export default function OrcamentosAprovadosPage() {
           : "Pagamento registrado. A venda foi movida para Pagas e aguarda a baixa física.");
         setPagamentoAlvo(null);
         invalidarVendas();
+      },
+      onError: (erro) => toast.error(erro.message),
+    });
+  };
+
+  const abrirRecebimento = (venda: AlvoRecebimento) => {
+    setRecebimentoAlvo(venda);
+    setTituloRecebimentoId("");
+    setValorRecebimento("");
+    setFormaRecebimento("pix");
+    setContaRecebimentoId("");
+    setDataRecebimento(dataLocalDeHoje());
+    setObservacoesRecebimento("");
+    setChequesRecebidos([]);
+  };
+
+  const confirmarRecebimento = () => {
+    if (!recebimentoAlvo || !tituloRecebimentoId || !contaRecebimentoId || !valorRecebimento || !dataRecebimento) return;
+    const valor = valorNumerico(valorRecebimento);
+    const titulo = titulosComSaldo.find((item: any) => String(item.id) === tituloRecebimentoId);
+    if (!titulo || valor <= 0 || valor > Number(titulo.saldoAberto) + 0.005) {
+      toast.error("Informe um valor válido que não ultrapasse o saldo da parcela selecionada.");
+      return;
+    }
+    registrarBaixa.mutate({
+      tituloId: Number(tituloRecebimentoId),
+      contaFinanceiraId: Number(contaRecebimentoId),
+      valor: normalizarValorEntrada(valorRecebimento),
+      dataBaixa: dataRecebimento,
+      formaPagamento: formaRecebimento,
+      observacoes: observacoesRecebimento || undefined,
+      ...(formaRecebimento === "cheque" ? { chequesRecebidos: chequesRecebidos.map((cheque) => ({
+        referencia: cheque.referencia,
+        valor: normalizarValorEntrada(cheque.valor),
+        dataCompensacao: cheque.dataCompensacao || undefined,
+      })) } : {}),
+    }, {
+      onSuccess: () => {
+        toast.success("Recebimento registrado.");
+        utils.financeiro.titulos.recebimentosVenda.invalidate();
+        utils.financeiro.titulos.list.invalidate();
+        utils.financeiro.cheques.list.invalidate();
+        invalidarVendas();
+        setValorRecebimento("");
+        setChequesRecebidos([]);
       },
       onError: (erro) => toast.error(erro.message),
     });
@@ -352,7 +462,8 @@ export default function OrcamentosAprovadosPage() {
                   <TableCell className="text-sm text-muted-foreground">{new Date(venda.createdAt).toLocaleDateString("pt-BR")}</TableCell>
                   <TableCell className="text-right"><div className="flex min-w-max items-center justify-end gap-1">
                     <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ver venda" onClick={() => setLocation(`/orcamentos/${venda.id}`)}><Eye className="h-4 w-4" /></Button>
-                    {!venda.pago && (venda.totalParcelasFinanceiras ?? 1) <= 1 && <Button size="sm" className="h-8 bg-emerald-700 text-white hover:bg-emerald-800" disabled={registrarPagamento.isPending} onClick={() => setPagamentoAlvo(alvo)}><CircleDollarSign className="mr-1.5 h-4 w-4" />Registrar pagamento</Button>}
+                    {podeRegistrarRecebimento && <Button size="sm" variant="outline" className="h-8" onClick={() => abrirRecebimento({ id: venda.id, numero: venda.numero ?? `Venda ${venda.id}`, clienteId: venda.clienteId, total: venda.total })}><CircleDollarSign className="mr-1.5 h-4 w-4" />Registrar recebimento</Button>}
+                    {podeQuitarIntegralmente && !venda.pago && (venda.totalParcelasFinanceiras ?? 1) <= 1 && <Button size="sm" className="h-8 bg-emerald-700 text-white hover:bg-emerald-800" disabled={registrarPagamento.isPending} onClick={() => setPagamentoAlvo(alvo)}><CircleDollarSign className="mr-1.5 h-4 w-4" />Quitar integralmente</Button>}
                     {!venda.entregue && <Button size="sm" className="h-8 bg-sky-700 text-white hover:bg-sky-800" disabled={entregarFisicamente.isPending} onClick={() => abrirEntrega(alvo)}><Truck className="mr-1.5 h-4 w-4" />Registrar entrega</Button>}
                     {venda.pago && <Button variant="outline" size="sm" className="h-8" onClick={() => setReciboParaVisualizar(alvo)}><Download className="mr-1.5 h-4 w-4" />Recibo</Button>}
                     {venda.pago && venda.entregue && <CheckCircle2 className="mx-1 h-4 w-4 text-emerald-600" aria-label="Venda concluída" />}
@@ -411,6 +522,60 @@ export default function OrcamentosAprovadosPage() {
             <Button variant="outline" onClick={() => setCondicaoPagamentoAlvo(null)} disabled={configurarCondicaoPagamento.isPending}>Cancelar</Button>
             <Button onClick={confirmarCondicaoPagamento} disabled={condicaoAtual.isLoading || configurarCondicaoPagamento.isPending || Boolean(condicaoAtual.data?.parcelas.some((parcela) => Number(parcela.valorBaixado) > 0))}>{configurarCondicaoPagamento.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{configurarCondicaoPagamento.isPending ? "Salvando..." : "Confirmar condição"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(recebimentoAlvo)} onOpenChange={(aberto) => !aberto && setRecebimentoAlvo(null)}>
+        <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Registrar recebimento</DialogTitle>
+            <DialogDescription>{recebimentoAlvo?.numero} · a baixa será vinculada ao título/parcela selecionado e registrada no Financeiro.</DialogDescription>
+          </DialogHeader>
+          {resumoRecebimentos.isLoading ? <div className="py-8 text-center text-sm text-muted-foreground">Carregando títulos e recebimentos…</div> : <>
+            <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-3">
+              <div><p className="text-xs text-muted-foreground">Total da venda</p><p className="font-semibold">{formatarMoeda.format(Number(resumoRecebimentos.data?.totalVenda ?? recebimentoAlvo?.total ?? 0))}</p></div>
+              <div><p className="text-xs text-muted-foreground">Total recebido</p><p className="font-semibold">{formatarMoeda.format(Number(resumoRecebimentos.data?.totalRecebido ?? 0))}</p></div>
+              <div><p className="text-xs text-muted-foreground">Saldo em aberto</p><p className="font-semibold">{formatarMoeda.format(Number(resumoRecebimentos.data?.saldoEmAberto ?? 0))}</p></div>
+            </div>
+
+            {titulosComSaldo.length > 0 ? <div className="space-y-4 rounded-lg border p-4">
+              <div className="space-y-2"><Label htmlFor="titulo-recebimento">Título / parcela *</Label>
+                <select id="titulo-recebimento" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs" value={tituloRecebimentoId} onChange={(event) => setTituloRecebimentoId(event.target.value)}>
+                  {titulosComSaldo.map((titulo: any) => <option key={titulo.id} value={String(titulo.id)}>
+                    {titulo.numeroParcela && titulo.totalParcelas ? `Parcela ${titulo.numeroParcela}/${titulo.totalParcelas}` : titulo.descricao} · Venc. {new Date(titulo.dataVencimento).toLocaleDateString("pt-BR")} · Saldo {formatarMoeda.format(Number(titulo.saldoAberto))}
+                  </option>)}
+                </select>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2"><Label htmlFor="valor-recebimento">Valor recebido *</Label><Input id="valor-recebimento" inputMode="decimal" value={valorRecebimento} onChange={(event) => setValorRecebimento(event.target.value)} placeholder="0,00" /></div>
+                <div className="space-y-2"><Label htmlFor="forma-recebimento">Forma de pagamento *</Label><select id="forma-recebimento" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs" value={formaRecebimento} onChange={(event) => { setFormaRecebimento(event.target.value as FormaRecebimento); setChequesRecebidos([]); }}>{FORMAS_RECEBIMENTO.map(([valor, rotulo]) => <option key={valor} value={valor}>{rotulo}</option>)}</select></div>
+                <div className="space-y-2"><Label htmlFor="conta-recebimento">Conta financeira *</Label><select id="conta-recebimento" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs" value={contaRecebimentoId} onChange={(event) => setContaRecebimentoId(event.target.value)}><option value="">Selecione a conta</option>{contasDisponiveis.map((conta: any) => <option key={conta.id} value={String(conta.id)}>{conta.nome}</option>)}</select>{formaRecebimento === "cheque" && !contasDisponiveis.length && <p className="text-xs text-destructive">Cadastre ou ative uma conta do tipo Caixa Cheque no Financeiro.</p>}</div>
+                <div className="space-y-2"><Label htmlFor="data-recebimento">Data *</Label><Input id="data-recebimento" type="date" value={dataRecebimento} onChange={(event) => setDataRecebimento(event.target.value)} /></div>
+                <div className="space-y-2 sm:col-span-2"><Label htmlFor="observacoes-recebimento">Observações</Label><Textarea id="observacoes-recebimento" value={observacoesRecebimento} onChange={(event) => setObservacoesRecebimento(event.target.value)} rows={2} /></div>
+              </div>
+
+              {formaRecebimento === "cheque" && <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Cheques recebidos</p><p className="text-xs text-muted-foreground">A soma dos cheques deve ser igual ao valor desta baixa.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setChequesRecebidos((atuais) => [...atuais, { referencia: "", valor: "", dataCompensacao: "" }])}><Plus className="mr-1 h-4 w-4" />Adicionar cheque</Button></div>
+                {chequesRecebidos.map((cheque, indice) => <div key={indice} className="grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-[1.2fr_.8fr_1fr_auto] sm:items-end">
+                  <div className="space-y-1"><Label htmlFor={`referencia-cheque-${indice}`}>Referência {indice + 1} *</Label><Input id={`referencia-cheque-${indice}`} value={cheque.referencia} onChange={(event) => setChequesRecebidos((atuais) => atuais.map((item, pos) => pos === indice ? { ...item, referencia: event.target.value } : item))} /></div>
+                  <div className="space-y-1"><Label htmlFor={`valor-cheque-${indice}`}>Valor {indice + 1} *</Label><Input id={`valor-cheque-${indice}`} inputMode="decimal" value={cheque.valor} onChange={(event) => setChequesRecebidos((atuais) => atuais.map((item, pos) => pos === indice ? { ...item, valor: event.target.value } : item))} placeholder="0,00" /></div>
+                  <div className="space-y-1"><Label htmlFor={`compensacao-cheque-${indice}`}>Data de compensação</Label><Input id={`compensacao-cheque-${indice}`} type="date" value={cheque.dataCompensacao} onChange={(event) => setChequesRecebidos((atuais) => atuais.map((item, pos) => pos === indice ? { ...item, dataCompensacao: event.target.value } : item))} /></div>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Remover cheque ${indice + 1}`} onClick={() => setChequesRecebidos((atuais) => atuais.filter((_, pos) => pos !== indice))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                </div>)}
+                <div className="flex justify-between text-sm"><span>Soma dos cheques</span><span className="font-medium">{formatarMoeda.format(valorChequeTotal)}</span></div>
+                <div className="flex justify-between text-sm"><span>Diferença para a baixa</span><span className={Math.round((valorChequeTotal - valorNumerico(valorRecebimento)) * 100) === 0 ? "font-medium text-emerald-700" : "font-medium text-destructive"}>{formatarMoeda.format(valorChequeTotal - valorNumerico(valorRecebimento))}</span></div>
+              </div>}
+              <DialogFooter><Button variant="outline" onClick={() => setRecebimentoAlvo(null)}>Fechar</Button><Button onClick={confirmarRecebimento} disabled={registrarBaixa.isPending || resumoRecebimentos.isFetching || !tituloRecebimentoId || !contaRecebimentoId || !dataRecebimento || valorNumerico(valorRecebimento) <= 0 || !chequesValidos}>{registrarBaixa.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{registrarBaixa.isPending ? "Registrando…" : "Registrar recebimento"}</Button></DialogFooter>
+            </div> : <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">Não há saldo em aberto para recebimento nesta venda.</p>}
+
+            <section className="space-y-2"><h3 className="text-sm font-semibold">Histórico de recebimentos</h3>
+              {(resumoRecebimentos.data?.titulos ?? []).flatMap((titulo: any) => (titulo.baixas ?? []).map((baixa: any) => ({ ...baixa, titulo }))).length ? <div className="max-h-56 space-y-2 overflow-y-auto">
+                {(resumoRecebimentos.data?.titulos ?? []).flatMap((titulo: any) => (titulo.baixas ?? []).map((baixa: any) => ({ ...baixa, titulo }))).map((baixa: any) => <div key={baixa.id} className={`flex flex-col gap-1 rounded-md border p-3 text-sm sm:flex-row sm:items-center sm:justify-between ${baixa.estornada ? "bg-muted/40 text-muted-foreground" : ""}`}>
+                  <div><p className="font-medium">{descricaoFormaPagamento(baixa.formaPagamento)}{baixa.titulo.numeroParcela && baixa.titulo.totalParcelas ? ` · Parcela ${baixa.titulo.numeroParcela}/${baixa.titulo.totalParcelas}` : ""}{baixa.estornada ? " · Estornada" : ""}</p><p className="text-xs text-muted-foreground">{new Date(baixa.dataBaixa).toLocaleDateString("pt-BR")} · {baixa.cheques.length ? baixa.cheques.map((cheque: any) => `${cheque.referencia} (${formatarMoeda.format(Number(cheque.valor))})`).join(", ") : (contasFinanceiras.data ?? []).find((conta: any) => conta.id === baixa.contaFinanceiraId)?.nome ?? "Conta"}</p></div><span className="font-semibold">{formatarMoeda.format(Number(baixa.valor))}</span>
+                </div>)}
+              </div> : <p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>}
+            </section>
+          </>}
         </DialogContent>
       </Dialog>
 

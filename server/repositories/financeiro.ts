@@ -12,7 +12,7 @@ import {
   type InsertTituloFinanceiro, type InsertBaixaFinanceira, type InsertChequeFinanceiro, type InsertRecorrenciaFinanceira, type TransferenciaFinanceira,
 } from "../../drizzle/schema";
 import { ENV } from '../_core/env';
-import { calcularCicloTituloFinanceiro, calcularEstadoTitulo, calcularParcelas, calcularPrevisaoSemanal, calcularRelatorioFluxoCaixa, classificarAlertaCompensacaoCheque, decimalParaNumero, planejarAtualizacaoAlertas, podeCancelarTituloFinanceiro, podeEstornarBaixa, proximoVencimento, saldoAbertoTitulo, tipoAlertaAtualDoTitulo, validarDepositoCheque, validarDevolucaoCheque, validarEdicaoTituloFinanceiro, validarExclusaoTituloFinanceiro, validarTransferenciaFinanceira, validarValorBaixaContraSaldo, validarValorDosCheques } from "../financeiro.logic";
+import { calcularCicloTituloFinanceiro, calcularEstadoTitulo, calcularParcelas, calcularPrevisaoSemanal, calcularRelatorioFluxoCaixa, classificarAlertaCompensacaoCheque, decimalParaNumero, planejarAtualizacaoAlertas, podeCancelarTituloFinanceiro, podeEstornarBaixa, proximoVencimento, resumirRecebimentosVenda, saldoAbertoTitulo, tipoAlertaAtualDoTitulo, validarDepositoCheque, validarDevolucaoCheque, validarEdicaoTituloFinanceiro, validarExclusaoTituloFinanceiro, validarTransferenciaFinanceira, validarValorBaixaContraSaldo, validarValorDosCheques } from "../financeiro.logic";
 import { criarModeloCsvLancamentos, exportarLancamentosCsv, prepararImportacaoLancamentos } from "../financeiro.intercambio";
 import { criarModeloCsvFornecedores, prepararImportacaoFornecedores } from "../fornecedores.intercambio";
 import { criarModeloCsvPlaquetasCarga, prepararImportacaoPlaquetasCarga } from "../estoque.intercambio";
@@ -1450,6 +1450,83 @@ export async function listBaixasFinanceiras(tituloId: number) {
     .leftJoin(contasFinanceiras, and(eq(baixasFinanceiras.contaFinanceiraId, contasFinanceiras.id), eq(contasFinanceiras.empresaId, empresaId)))
     .where(and(eq(baixasFinanceiras.tituloId, tituloId), eq(baixasFinanceiras.empresaId, empresaId)))
     .orderBy(desc(baixasFinanceiras.dataBaixa));
+}
+
+export async function getResumoFinanceiroVenda(orcamentoId: number, empresaId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const venda = (await db.select({ id: orcamentos.id, total: orcamentos.total })
+    .from(orcamentos)
+    .where(and(eq(orcamentos.id, orcamentoId), eq(orcamentos.empresaId, empresaId)))
+    .limit(1))[0];
+  if (!venda) throw new Error("Venda não encontrada para a empresa ativa");
+
+  const titulos = await db.select().from(titulosFinanceiros).where(and(
+    eq(titulosFinanceiros.empresaId, empresaId),
+    eq(titulosFinanceiros.origem, "orcamento"),
+    eq(titulosFinanceiros.orcamentoId, orcamentoId),
+    eq(titulosFinanceiros.tipo, "receber"),
+  )).orderBy(asc(titulosFinanceiros.numeroParcela), asc(titulosFinanceiros.dataVencimento));
+  const tituloIds = titulos.map((titulo) => titulo.id);
+  const baixas = tituloIds.length ? await db.select().from(baixasFinanceiras)
+    .where(and(eq(baixasFinanceiras.empresaId, empresaId), inArray(baixasFinanceiras.tituloId, tituloIds)))
+    .orderBy(desc(baixasFinanceiras.dataBaixa), desc(baixasFinanceiras.id)) : [];
+  const baixaIds = baixas.map((baixa) => baixa.id);
+  const cheques = baixaIds.length ? await db.select().from(chequesFinanceiros)
+    .where(and(eq(chequesFinanceiros.empresaId, empresaId), inArray(chequesFinanceiros.baixaEntradaId, baixaIds))) : [];
+  const chequesPorBaixa = new Map<number, typeof cheques>();
+  for (const cheque of cheques) {
+    const relacionados = chequesPorBaixa.get(cheque.baixaEntradaId) ?? [];
+    relacionados.push(cheque);
+    chequesPorBaixa.set(cheque.baixaEntradaId, relacionados);
+  }
+  const baixasPorTitulo = new Map<number, typeof baixas>();
+  for (const baixa of baixas) {
+    const relacionadas = baixasPorTitulo.get(baixa.tituloId) ?? [];
+    relacionadas.push(baixa);
+    baixasPorTitulo.set(baixa.tituloId, relacionadas);
+  }
+
+  const resumo = resumirRecebimentosVenda({
+    totalVenda: venda.total,
+    titulos,
+    baixas: baixas.map((baixa) => ({ tituloId: baixa.tituloId, valor: baixa.valor, estornada: baixa.estornada })),
+  });
+  const cicloPorTitulo = new Map(resumo.titulos.map((titulo) => [titulo.id, titulo]));
+  const titulosResumo = titulos.map((titulo) => {
+    const baixasDoTitulo = baixasPorTitulo.get(titulo.id) ?? [];
+    const ciclo = cicloPorTitulo.get(titulo.id)!;
+    return {
+      id: titulo.id,
+      descricao: titulo.descricao,
+      numeroParcela: titulo.numeroParcela,
+      totalParcelas: titulo.totalParcelas,
+      valorOriginal: titulo.valorOriginal,
+      valorDevido: ciclo.valorDevido,
+      valorRecebido: ciclo.valorRecebido,
+      saldoAberto: ciclo.saldoAberto,
+      dataVencimento: titulo.dataVencimento,
+      estado: ciclo.estado,
+      baixas: baixasDoTitulo.map((baixa) => ({
+        id: baixa.id,
+        valor: baixa.valor,
+        dataBaixa: baixa.dataBaixa,
+        formaPagamento: baixa.formaPagamento,
+        estornada: baixa.estornada,
+        estornadaEm: baixa.estornadaEm,
+        motivoEstorno: baixa.motivoEstorno,
+        contaFinanceiraId: baixa.contaFinanceiraId,
+        cheques: chequesPorBaixa.get(baixa.id) ?? [],
+      })),
+    };
+  });
+  return {
+    vendaId: venda.id,
+    totalVenda: resumo.totalVenda,
+    totalRecebido: resumo.totalRecebido,
+    saldoEmAberto: resumo.saldoEmAberto,
+    titulos: titulosResumo,
+  };
 }
 
 export async function conciliarBaixaFinanceira(id: number, conciliada: boolean) {

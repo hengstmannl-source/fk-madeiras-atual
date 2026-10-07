@@ -15,6 +15,12 @@ export const FormaPagamentoFinanceiraSchema = z.enum([
 ]);
 export const DataFinanceiraSchema = z.string().max(4000).regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida").refine(dataCalendarioValida, "Informe uma data válida");
 const FormatoExtratoBancarioSchema = z.enum(["csv", "ofx"]);
+export const ChequeRecebidoSchema = z.object({
+  referencia: z.string().trim().min(1).max(120),
+  valor: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/),
+  clienteId: z.number().int().positive().optional(),
+  dataCompensacao: DataFinanceiraSchema.optional(),
+});
 const EstadoMovimentoBancarioSchema = z.enum(["pendente", "conciliado", "ignorado", "divergente"]);
 
 function dataLocal(data: string): Date {
@@ -452,6 +458,8 @@ export const financeiroRouter = router({
       });
     }),
 
+    recebimentosVenda: protectedProcedure.input(z.object({ orcamentoId: z.number().int().positive() }))
+      .query(({ ctx, input }) => db.getResumoFinanceiroVenda(input.orcamentoId, ctx.configuracaoEmpresa.id)),
     baixas: protectedProcedure.input(z.object({ tituloId: z.number().int().positive() })).query(({ ctx, input }) => db.listBaixasFinanceiras(input.tituloId)),
     baixar: protectedProcedure.input(z.object({
       tituloId: z.number().int().positive(),
@@ -460,12 +468,7 @@ export const financeiroRouter = router({
       dataBaixa: DataFinanceiraSchema,
       formaPagamento: FormaPagamentoFinanceiraSchema,
       observacoes: z.string().max(4000).optional(),
-      chequesRecebidos: z.array(z.object({
-        referencia: z.string().trim().min(1).max(120),
-        valor: z.string().max(4000).regex(/^\d+(?:[.,]\d{1,2})?$/),
-        clienteId: z.number().int().positive().optional(),
-        dataCompensacao: DataFinanceiraSchema.optional(),
-      })).min(1).max(100).optional(),
+      chequesRecebidos: z.array(ChequeRecebidoSchema).min(1).max(100).optional(),
       chequeIdsUtilizados: z.array(z.number().int().positive()).min(1).max(100).optional(),
     })).mutation(({ ctx, input }) => db.registrarBaixaFinanceira({
       ...input,

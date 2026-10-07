@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calcularCicloTituloFinanceiro,
+  resumirRecebimentosVenda,
   calcularEstadoTitulo,
   calcularPrevisaoSemanal,
   calcularRelatorioFluxoCaixa,
@@ -25,6 +26,40 @@ import {
 import { montarFluxoCaixaGerencial } from "./fluxo-caixa.logic";
 
 describe("regras financeiras", () => {
+  it("resume recebimentos de venda por título, exclui estornos e agrega parcelas sem rateio", () => {
+    const dataVencimento = new Date("2099-10-10T12:00:00.000Z");
+    const titulos = [1, 2, 3].map((id) => ({ id, valorOriginal: "30000.00", dataVencimento, estado: "aberto" }));
+    const resumoInicial = resumirRecebimentosVenda({
+      totalVenda: "90000.00",
+      titulos,
+      baixas: [
+        { tituloId: 1, valor: "30000.00" },
+        { tituloId: 2, valor: "20000.00" },
+        { tituloId: 2, valor: "10000.00", estornada: true },
+      ],
+      agora: new Date("2026-10-07T12:00:00.000Z"),
+    });
+    expect(resumoInicial).toMatchObject({ totalVenda: 90000, totalRecebido: 50000, saldoEmAberto: 40000 });
+    expect(resumoInicial.titulos[1]).toMatchObject({ valorRecebido: 20000, saldoAberto: 10000, estado: "parcial" });
+
+    const resumoComSegundoRecebimento = resumirRecebimentosVenda({
+      totalVenda: "90000.00",
+      titulos,
+      baixas: [{ tituloId: 1, valor: "30000" }, { tituloId: 2, valor: "30000" }, { tituloId: 3, valor: "10000" }],
+      agora: new Date("2026-10-07T12:00:00.000Z"),
+    });
+    expect(resumoComSegundoRecebimento).toMatchObject({ totalRecebido: 70000, saldoEmAberto: 20000 });
+
+    const resumoQuitado = resumirRecebimentosVenda({
+      totalVenda: "90000.00",
+      titulos,
+      baixas: [{ tituloId: 1, valor: "30000" }, { tituloId: 2, valor: "30000" }, { tituloId: 3, valor: "30000" }],
+      agora: new Date("2026-10-07T12:00:00.000Z"),
+    });
+    expect(resumoQuitado).toMatchObject({ totalRecebido: 90000, saldoEmAberto: 0 });
+    expect(resumoQuitado.titulos.every((titulo) => titulo.estado === "quitado")).toBe(true);
+  });
+
   it("calcula os estados aberto, parcial, quitado e vencido", () => {
     const hoje = new Date("2026-08-11T12:00:00.000Z");
     expect(calcularEstadoTitulo({ valorOriginal: "100", dataVencimento: hoje, agora: hoje })).toBe("aberto");
