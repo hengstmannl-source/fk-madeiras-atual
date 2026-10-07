@@ -116,6 +116,31 @@ describe("getContasOperacionais", () => {
     expect(resultado.agrupamentos).toEqual([{ contraparte: "Cliente A", clienteId: 1, fornecedorId: null, quantidade: 1, saldoAberto: 100, vencido: 0 }]);
     expect(resultado.top5Contrapartes).toEqual(resultado.agrupamentos);
   });
+  it("keeps the full aging summary while the operational list is filtered by band", async () => {
+    const dados = dependencias([
+      titulo(1, { origem: "manual", dataVencimento: new Date(2026, 7, 13, 12), valorOriginal: "300.00" }),
+      titulo(2, { origem: "manual", dataVencimento: new Date(2026, 7, 11, 12), valorOriginal: "250.00" }),
+      titulo(3, { origem: "manual", dataVencimento: new Date(2026, 6, 7, 12), valorOriginal: "500.00" }),
+      titulo(4, { origem: "manual", dataVencimento: new Date(2026, 6, 20, 12), valorOriginal: "700.00" }),
+      titulo(5, { origem: "orcamento", estado: "parcial", dataVencimento: new Date(2026, 6, 7, 12), valorOriginal: "125.00" }),
+    ], [baixa(1, 5, { valor: "25.00" })]);
+
+    const completo = await getContasOperacionais({ tipo: "receber" }, dados);
+    const atraso31a60 = await getContasOperacionais({ tipo: "receber", aging: "31_60" }, dados);
+    const faixaVazia = await getContasOperacionais({ tipo: "receber", aging: "61_90" }, dados);
+    const parciaisAtraso31a60 = await getContasOperacionais({ tipo: "receber", estado: "parcial", aging: "31_60" }, dados);
+    const semFaixa = await getContasOperacionais({ tipo: "receber" }, dados);
+
+    expect(completo.resumo.aging).toMatchObject({ a_vencer: 300, vence_hoje: 250, "8_30": 700, "31_60": 600, "61_90": 0 });
+    expect(atraso31a60.itens.map((item) => item.id)).toEqual([3, 5]);
+    expect(atraso31a60.resumo.aging).toEqual(completo.resumo.aging);
+    expect(faixaVazia.itens).toEqual([]);
+    expect(faixaVazia.resumo.aging).toEqual(completo.resumo.aging);
+    expect(parciaisAtraso31a60.itens.map((item) => item.id)).toEqual([5]);
+    expect(parciaisAtraso31a60.resumo.aging).toMatchObject({ a_vencer: 0, vence_hoje: 0, "8_30": 0, "31_60": 100, "61_90": 0 });
+    expect(semFaixa.itens).toHaveLength(5);
+    expect(semFaixa.resumo.aging).toEqual(completo.resumo.aging);
+  });
 });
 
 describe("listTitulosFinanceiros", () => {

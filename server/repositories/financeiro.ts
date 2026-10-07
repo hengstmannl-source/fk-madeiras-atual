@@ -1175,7 +1175,6 @@ export async function getContasOperacionais(
     if (item.estado === "quitado" || item.estado === "cancelado" || item.saldoAberto <= 0.005) return false;
     if (filtros.estado && item.estado !== filtros.estado) return false;
     if (!situacaoOperacionalCorresponde(item, filtros.situacao)) return false;
-    if (filtros.aging && item.faixaAging !== filtros.aging) return false;
     if (textoBuscado && !`${item.descricao} ${item.contraparte}`.toLocaleLowerCase("pt-BR").includes(textoBuscado)) return false;
     if (filtros.valorMinimo !== undefined && item.saldoAberto < filtros.valorMinimo) return false;
     if (filtros.valorMaximo !== undefined && item.saldoAberto > filtros.valorMaximo) return false;
@@ -1186,12 +1185,16 @@ export async function getContasOperacionais(
     return true;
   });
 
-  const itensOrdenados = filtros.ordenar === "vencimento_asc" ? [...itens].sort((a, b) => a.dataVencimento.getTime() - b.dataVencimento.getTime() || a.id - b.id)
-    : filtros.ordenar === "vencimento_desc" ? [...itens].sort((a, b) => b.dataVencimento.getTime() - a.dataVencimento.getTime() || a.id - b.id)
-      : filtros.ordenar === "saldo_desc" ? [...itens].sort((a, b) => b.saldoAberto - a.saldoAberto || a.id - b.id)
-        : filtros.ordenar === "contraparte" ? [...itens].sort((a, b) => a.contraparte.localeCompare(b.contraparte, "pt-BR") || a.id - b.id)
-          : ordenarContasOperacionais(itens);
-  const agrupamentos = Array.from(itens.reduce((mapa, item) => {
+  const itensFila = filtros.aging
+    ? itens.filter((item) => item.faixaAging === filtros.aging)
+    : itens;
+
+  const itensOrdenados = filtros.ordenar === "vencimento_asc" ? [...itensFila].sort((a, b) => a.dataVencimento.getTime() - b.dataVencimento.getTime() || a.id - b.id)
+    : filtros.ordenar === "vencimento_desc" ? [...itensFila].sort((a, b) => b.dataVencimento.getTime() - a.dataVencimento.getTime() || a.id - b.id)
+      : filtros.ordenar === "saldo_desc" ? [...itensFila].sort((a, b) => b.saldoAberto - a.saldoAberto || a.id - b.id)
+        : filtros.ordenar === "contraparte" ? [...itensFila].sort((a, b) => a.contraparte.localeCompare(b.contraparte, "pt-BR") || a.id - b.id)
+          : ordenarContasOperacionais(itensFila);
+  const agrupamentos = Array.from(itensFila.reduce((mapa, item) => {
     const chave = item.tipo === "receber" ? `cliente:${item.clienteId ?? item.contraparte}` : `fornecedor:${item.fornecedorId ?? item.contraparte}`;
     const existente = mapa.get(chave) ?? { contraparte: item.contraparte, clienteId: item.clienteId, fornecedorId: item.fornecedorId, quantidade: 0, saldoAberto: 0, vencido: 0 };
     existente.quantidade += 1;
@@ -1202,9 +1205,12 @@ export async function getContasOperacionais(
   }, new Map<string, { contraparte: string; clienteId: number | null; fornecedorId: number | null; quantidade: number; saldoAberto: number; vencido: number }>()).values())
     .sort((a, b) => b.saldoAberto - a.saldoAberto || a.contraparte.localeCompare(b.contraparte, "pt-BR"));
 
+  const resumoFila = resumirContasOperacionais(itensFila);
+  const resumoAging = resumirContasOperacionais(itens).aging;
+
   return {
     itens: itensOrdenados,
-    resumo: resumirContasOperacionais(itens),
+    resumo: { ...resumoFila, aging: resumoAging },
     agrupamentos,
     top5Contrapartes: agrupamentos.slice(0, 5),
     convencaoContaFinanceira: "O filtro por conta retorna somente títulos que já possuem baixa válida nessa conta; títulos em aberto não recebem conta prevista.",

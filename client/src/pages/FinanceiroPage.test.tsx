@@ -176,14 +176,13 @@ vi.mock("@/lib/trpc", () => {
         },
         contasOperacionais: { list: { useQuery: (filtros?: Record<string, unknown>) => {
           state.ultimaConsultaOperacional = filtros;
-          const itens = state.contasOperacionais.itens.filter((titulo) => {
+          const itensBase = state.contasOperacionais.itens.filter((titulo) => {
             if (filtros?.tipo && titulo.tipo !== filtros.tipo) return false;
             if (filtros?.situacao === "vencido" && !["vencido", "vencido_8_30", "vencido_31_60", "vencido_61_90", "vencido_mais_90"].includes(String(titulo.prioridade))) return false;
             if (filtros?.situacao === "vence_hoje" && titulo.prioridade !== "vence_hoje") return false;
             if (filtros?.situacao === "proximos_7_dias" && titulo.prioridade !== "vence_em_breve") return false;
             if (filtros?.situacao === "proximos_30_dias" && !(Number(titulo.diasParaVencimento) >= 1 && Number(titulo.diasParaVencimento) <= 30)) return false;
             if (filtros?.situacao === "a_vencer" && !["vence_hoje", "vence_em_breve", "normal"].includes(String(titulo.prioridade))) return false;
-            if (filtros?.aging && titulo.faixaAging !== filtros.aging) return false;
             if (filtros?.estado && titulo.estado !== filtros.estado) return false;
             if (filtros?.origem && titulo.origem !== filtros.origem) return false;
             if (filtros?.clienteId && Number(titulo.clienteId) !== Number(filtros.clienteId)) return false;
@@ -191,8 +190,9 @@ vi.mock("@/lib/trpc", () => {
             if (filtros?.descricao && !`${titulo.descricao ?? ""} ${titulo.contraparte ?? ""}`.toLocaleLowerCase("pt-BR").includes(String(filtros.descricao).toLocaleLowerCase("pt-BR"))) return false;
             return true;
           });
+          const itens = filtros?.aging ? itensBase.filter((titulo) => titulo.faixaAging === filtros.aging) : itensBase;
           const aging = { a_vencer: 0, vence_hoje: 0, "1_7": 0, "8_30": 0, "31_60": 0, "61_90": 0, mais_90: 0, encerrado: 0 } as Record<string, number>;
-          itens.forEach((titulo) => { aging[String(titulo.faixaAging)] += Number(titulo.saldoAberto); });
+          itensBase.forEach((titulo) => { aging[String(titulo.faixaAging)] += Number(titulo.saldoAberto); });
           const resumo = { quantidade: itens.length, saldoAberto: itens.reduce((total, titulo) => total + Number(titulo.saldoAberto), 0), vencido: itens.filter((titulo) => Number(titulo.diasParaVencimento) < 0).reduce((total, titulo) => total + Number(titulo.saldoAberto), 0), aVencer: itens.filter((titulo) => Number(titulo.diasParaVencimento) > 0).reduce((total, titulo) => total + Number(titulo.saldoAberto), 0), venceHoje: itens.filter((titulo) => titulo.prioridade === "vence_hoje").reduce((total, titulo) => total + Number(titulo.saldoAberto), 0), proximosSeteDias: itens.filter((titulo) => titulo.prioridade === "vence_em_breve").reduce((total, titulo) => total + Number(titulo.saldoAberto), 0), proximosTrintaDias: itens.filter((titulo) => Number(titulo.diasParaVencimento) >= 1 && Number(titulo.diasParaVencimento) <= 30).reduce((total, titulo) => total + Number(titulo.saldoAberto), 0), percentualVencido: 0, aging };
           return { data: { ...state.contasOperacionais, itens, resumo }, isLoading: false, isFetching: false };
         } } },
@@ -725,6 +725,49 @@ describe("FinanceiroPage — cancelamento manual", () => {
     expect(tabela).toBeDefined();
     expect(within(tabela!).queryByText("Fornecedor parcial")).not.toBeInTheDocument();
     expect(within(tabela!).getByText("Frete vencido")).toBeInTheDocument();
+  });
+
+  it("mantém o Aging completo ao filtrar, esvaziar e limpar a faixa da fila", async () => {
+    state.contasOperacionais.itens.push({ id: 95, tipo: "pagar", estado: "aberto", descricao: "Conta atraso 31 a 60", origem: "manual", competencia: null, categoriaId: 1, categoriaNome: "Despesas", clienteId: null, fornecedorId: 14, contraparte: "Fornecedor atraso longo", numeroParcela: null, totalParcelas: null, valorOriginal: "500.00", desconto: "0.00", juros: "0.00", valorDevido: 500, valorBaixado: 0, saldoAberto: 500, dataVencimento: "2026-07-07T00:00:00.000Z", diasParaVencimento: -35, prioridade: "vencido_31_60", faixaAging: "31_60", temBaixaConciliada: false, baixas: [] });
+    const user = userEvent.setup();
+    render(<FinanceiroPage />);
+
+    const painelAging = screen.getByText("Aging por vencimento").parentElement?.parentElement;
+    expect(painelAging).not.toBeNull();
+    const dentroDoAging = within(painelAging!);
+    const aVencer = dentroDoAging.getByRole("button", { name: /a vencer/i });
+    const venceHoje = dentroDoAging.getByRole("button", { name: /vence hoje/i });
+    const atraso830 = dentroDoAging.getByRole("button", { name: /atraso 8/i });
+    const atraso3160 = dentroDoAging.getByRole("button", { name: /atraso 31/i });
+    const atraso6190 = dentroDoAging.getByRole("button", { name: /atraso 61/i });
+    expect(aVencer).toHaveTextContent("300,00");
+    expect(venceHoje).toHaveTextContent("250,00");
+    expect(atraso830).toHaveTextContent("700,00");
+    expect(atraso3160).toHaveTextContent("500,00");
+
+    await user.click(atraso3160);
+    const tabelaSelecionada = screen.getAllByRole("table").find((elemento) => within(elemento).queryByText("Conta atraso 31 a 60"));
+    expect(tabelaSelecionada).toBeDefined();
+    expect(within(tabelaSelecionada!).queryByText("Frete vencido")).not.toBeInTheDocument();
+    expect(aVencer).toHaveTextContent("300,00");
+    expect(venceHoje).toHaveTextContent("250,00");
+    expect(atraso830).toHaveTextContent("700,00");
+
+    await user.click(atraso6190);
+    expect(screen.getByText("Nenhum título em aberto corresponde aos filtros aplicados.")).toBeInTheDocument();
+    expect(aVencer).toHaveTextContent("300,00");
+    expect(venceHoje).toHaveTextContent("250,00");
+    expect(atraso830).toHaveTextContent("700,00");
+    expect(atraso3160).toHaveTextContent("500,00");
+
+    await user.click(screen.getByRole("button", { name: /total a pagar/i }));
+    const tabelaRestaurada = screen.getAllByRole("table").find((elemento) => within(elemento).queryByText("Conta atraso 31 a 60"));
+    expect(tabelaRestaurada).toBeDefined();
+    expect(within(tabelaRestaurada!).getByText("Frete vencido")).toBeInTheDocument();
+    expect(aVencer).toHaveTextContent("300,00");
+    expect(venceHoje).toHaveTextContent("250,00");
+    expect(atraso830).toHaveTextContent("700,00");
+    expect(atraso3160).toHaveTextContent("500,00");
   });
 
   it("filtra a fila de recebimentos pelo cliente selecionado", async () => {
