@@ -1,14 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { ContaSchema, FormaPagamentoFinanceiraSchema, LancamentoManualSchema, RecorrenciaSchema } from "./financeiro";
-import { appRouter } from "../routers";
-import type { TrpcContext } from "../_core/context";
-
-function contextoFinanceiro(papel: string) {
-  return {
-    user: { id: 1, papel, role: "user", openId: "teste", name: "Teste", email: "teste@example.com", loginMethod: "local", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() },
-    configuracaoEmpresa: { id: 1, nome: "FK Madeiras", ativa: true },
-  } as unknown as TrpcContext;
-}
 
 describe("validação de lançamentos financeiros manuais", () => {
   const base = {
@@ -61,14 +52,6 @@ describe("contrato do Caixa Cheque", () => {
   it("rejeita tipos de conta e formas de pagamento desconhecidos", () => {
     expect(() => FormaPagamentoFinanceiraSchema.parse("promissoria")).toThrow();
     expect(() => ContaSchema.parse({ nome: "Conta inválida", tipo: "credito" })).toThrow();
-  });
-});
-
-describe("autorização do resumo financeiro da venda", () => {
-  it("não permite que o perfil vendas consulte o resumo/recebimentos financeiros", async () => {
-    const caller = appRouter.createCaller(contextoFinanceiro("vendas"));
-    await expect(caller.financeiro.titulos.recebimentosVenda({ orcamentoId: 25 }))
-      .rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
 

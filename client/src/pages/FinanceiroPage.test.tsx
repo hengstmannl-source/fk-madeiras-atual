@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   ultimaConsultaOperacional: undefined as Record<string, unknown> | undefined,
   ultimaConsultaTitulos: undefined as Record<string, unknown> | undefined,
   titulos: [] as Array<Record<string, unknown>>,
+  contas: [] as Array<Record<string, unknown>>,
   clientes: [] as Array<Record<string, unknown>>,
   categorias: [] as Array<Record<string, unknown>>,
   centrosCusto: [] as Array<Record<string, unknown>>,
@@ -204,7 +205,7 @@ vi.mock("@/lib/trpc", () => {
           list: { useQuery: () => ({ data: state.anexos, isLoading: false, refetch: vi.fn() }) },
           remove: mutationInerte,
         },
-        contas: { list: queryVazia, create: mutationInerte, update: mutationInerte, delete: mutationInerte },
+        contas: { list: { useQuery: () => ({ data: state.contas, isLoading: false }) }, create: mutationInerte, update: mutationInerte, delete: mutationInerte },
         transferencias: { list: queryVazia, movimentosPorConta: queryVazia, create: mutationInerte, estornar: mutationInerte },
         cheques: { list: queryVazia, resumo: { useQuery: () => ({ data: { totalDisponivel: 0, quantidadeDisponivel: 0, totalUtilizado: 0, quantidadeUtilizada: 0, contas: [] }, isLoading: false }) } },
         recorrencias: { list: queryVazia, create: mutationInerte },
@@ -268,6 +269,7 @@ describe("FinanceiroPage — cancelamento manual", () => {
     state.exportarPdf.mockReset();
     state.exportarPdf.mockResolvedValue({ url: `blob:${window.location.origin}/relatorio-financeiro`, nomeArquivo: "contas-a-pagar-2026-08-18.pdf" });
     state.centrosCusto = [];
+    state.contas = [];
     state.fluxo = {
       saldoAbertura: 100,
       entradas: 50,
@@ -794,5 +796,71 @@ describe("FinanceiroPage — cancelamento manual", () => {
     expect(within(dialogo).getByText((_, elemento) => elemento?.textContent === "R$ 950,00")).toBeInTheDocument();
     expect(within(dialogo).getByRole("button", { name: "Pagar" })).toBeInTheDocument();
     expect(within(dialogo).getByRole("button", { name: "Baixas" })).toBeInTheDocument();
+  });
+
+  it("explica o valor da baixa parcial e mostra o saldo após recebimento somente para valor válido", async () => {
+    const user = userEvent.setup();
+    state.contas = [{ id: 51, nome: "Banco", tipo: "banco", ativa: true }];
+    state.titulos = [{
+      id: 51, descricao: "Venda parcial de teste", tipo: "receber", estado: "aberto", origem: "orcamento",
+      clienteId: 7, valorOriginal: "50541.09", valorBaixado: "0.00", desconto: "0.00", juros: "0.00",
+      dataVencimento: "2026-10-20T12:00:00.000Z",
+    }];
+    state.contasOperacionais.itens = [{
+      id: 51, tipo: "receber", estado: "aberto", descricao: "Venda parcial de teste", origem: "orcamento",
+      competencia: null, categoriaId: 1, categoriaNome: "Receitas de vendas", clienteId: 7, fornecedorId: null,
+      contraparte: "Cliente operacional", numeroParcela: 1, totalParcelas: 1, valorOriginal: "50541.09",
+      desconto: "0.00", juros: "0.00", valorDevido: 50541.09, valorBaixado: 0, saldoAberto: 50541.09,
+      dataVencimento: "2026-10-20T12:00:00.000Z", diasParaVencimento: 13, prioridade: "normal",
+      faixaAging: "a_vencer", temBaixaConciliada: false, baixas: [],
+    }];
+    render(<FinanceiroPage />);
+
+    await user.click(screen.getAllByRole("button", { name: "Visão financeira: Contas a receber" }).at(-1)!);
+    const linha = screen.getAllByRole("row").find((elemento) => elemento.textContent?.includes("Venda parcial de teste"));
+    expect(linha).toBeDefined();
+    await user.click(linha!);
+    await user.click(await screen.findByRole("button", { name: "Receber" }));
+
+    expect(screen.getByLabelText("Valor deste recebimento (R$) *")).toHaveValue("50541.09");
+    expect(screen.getByText("Saldo em aberto:").parentElement).toHaveTextContent("50.541,09");
+    const saldoAposRecebimento = screen.getByText("Saldo após recebimento:").parentElement!;
+    expect(saldoAposRecebimento).toHaveTextContent("50.541,09");
+
+    fireEvent.change(screen.getByLabelText("Valor deste recebimento (R$) *"), { target: { value: "10000,00" } });
+    expect(saldoAposRecebimento).toHaveTextContent("40.541,09");
+
+    fireEvent.change(screen.getByLabelText("Valor deste recebimento (R$) *"), { target: { value: "60000,00" } });
+    expect(saldoAposRecebimento).toHaveTextContent("—");
+    fireEvent.change(screen.getByLabelText("Valor deste recebimento (R$) *"), { target: { value: "" } });
+    expect(saldoAposRecebimento).toHaveTextContent("—");
+  });
+
+  it("explica que cheques cobrem somente o valor deste recebimento", async () => {
+    const user = userEvent.setup();
+    state.contas = [{ id: 52, nome: "Caixa Cheque", tipo: "caixa_cheque", ativa: true }];
+    state.titulos = [{
+      id: 52, descricao: "Venda com cheque parcial", tipo: "receber", estado: "aberto", origem: "orcamento",
+      clienteId: 7, valorOriginal: "50541.09", valorBaixado: "0.00", desconto: "0.00", juros: "0.00",
+      dataVencimento: "2026-10-20T12:00:00.000Z",
+    }];
+    state.contasOperacionais.itens = [{
+      id: 52, tipo: "receber", estado: "aberto", descricao: "Venda com cheque parcial", origem: "orcamento",
+      competencia: null, categoriaId: 1, categoriaNome: "Receitas de vendas", clienteId: 7, fornecedorId: null,
+      contraparte: "Cliente operacional", numeroParcela: null, totalParcelas: null, valorOriginal: "50541.09",
+      desconto: "0.00", juros: "0.00", valorDevido: 50541.09, valorBaixado: 0, saldoAberto: 50541.09,
+      dataVencimento: "2026-10-20T12:00:00.000Z", diasParaVencimento: 13, prioridade: "normal",
+      faixaAging: "a_vencer", temBaixaConciliada: false, baixas: [],
+    }];
+    render(<FinanceiroPage />);
+
+    await user.click(screen.getAllByRole("button", { name: "Visão financeira: Contas a receber" }).at(-1)!);
+    const linha = screen.getAllByRole("row").find((elemento) => elemento.textContent?.includes("Venda com cheque parcial"));
+    expect(linha).toBeDefined();
+    await user.click(linha!);
+    await user.click(await screen.findByRole("button", { name: "Receber" }));
+
+    expect(screen.getByText(/A soma dos cheques deve ser igual ao valor deste recebimento\./)).toBeInTheDocument();
+    expect(screen.getByLabelText("Valor deste recebimento (R$) *")).toHaveValue("50541.09");
   });
 });

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   calcularCicloTituloFinanceiro,
-  resumirRecebimentosVenda,
   calcularEstadoTitulo,
   calcularPrevisaoSemanal,
   calcularRelatorioFluxoCaixa,
@@ -26,40 +25,6 @@ import {
 import { montarFluxoCaixaGerencial } from "./fluxo-caixa.logic";
 
 describe("regras financeiras", () => {
-  it("resume recebimentos de venda por título, exclui estornos e agrega parcelas sem rateio", () => {
-    const dataVencimento = new Date("2099-10-10T12:00:00.000Z");
-    const titulos = [1, 2, 3].map((id) => ({ id, valorOriginal: "30000.00", dataVencimento, estado: "aberto" }));
-    const resumoInicial = resumirRecebimentosVenda({
-      totalVenda: "90000.00",
-      titulos,
-      baixas: [
-        { tituloId: 1, valor: "30000.00" },
-        { tituloId: 2, valor: "20000.00" },
-        { tituloId: 2, valor: "10000.00", estornada: true },
-      ],
-      agora: new Date("2026-10-07T12:00:00.000Z"),
-    });
-    expect(resumoInicial).toMatchObject({ totalVenda: 90000, totalRecebido: 50000, saldoEmAberto: 40000 });
-    expect(resumoInicial.titulos[1]).toMatchObject({ valorRecebido: 20000, saldoAberto: 10000, estado: "parcial" });
-
-    const resumoComSegundoRecebimento = resumirRecebimentosVenda({
-      totalVenda: "90000.00",
-      titulos,
-      baixas: [{ tituloId: 1, valor: "30000" }, { tituloId: 2, valor: "30000" }, { tituloId: 3, valor: "10000" }],
-      agora: new Date("2026-10-07T12:00:00.000Z"),
-    });
-    expect(resumoComSegundoRecebimento).toMatchObject({ totalRecebido: 70000, saldoEmAberto: 20000 });
-
-    const resumoQuitado = resumirRecebimentosVenda({
-      totalVenda: "90000.00",
-      titulos,
-      baixas: [{ tituloId: 1, valor: "30000" }, { tituloId: 2, valor: "30000" }, { tituloId: 3, valor: "30000" }],
-      agora: new Date("2026-10-07T12:00:00.000Z"),
-    });
-    expect(resumoQuitado).toMatchObject({ totalRecebido: 90000, saldoEmAberto: 0 });
-    expect(resumoQuitado.titulos.every((titulo) => titulo.estado === "quitado")).toBe(true);
-  });
-
   it("calcula os estados aberto, parcial, quitado e vencido", () => {
     const hoje = new Date("2026-08-11T12:00:00.000Z");
     expect(calcularEstadoTitulo({ valorOriginal: "100", dataVencimento: hoje, agora: hoje })).toBe("aberto");
@@ -114,6 +79,32 @@ describe("regras financeiras", () => {
       saldoAberto: 0,
       estado: "quitado",
     });
+  });
+
+  it("preserva baixas parciais e cheques pelo valor da baixa, sem ultrapassar o saldo do título", () => {
+    const titulo = {
+      valorOriginal: "50541.09",
+      dataVencimento: new Date("2026-10-20T12:00:00.000Z"),
+      agora: new Date("2026-10-07T12:00:00.000Z"),
+    };
+
+    expect(validarValorBaixaContraSaldo("10000.00", "50541.09")).toBe(10000);
+    expect(calcularCicloTituloFinanceiro({ ...titulo, baixas: [{ valor: "10000.00" }] }))
+      .toMatchObject({ valorBaixado: 10000, saldoAberto: 40541.09, estado: "parcial" });
+
+    expect(validarValorBaixaContraSaldo("20000.00", "50541.09")).toBe(20000);
+    expect(validarValorDosCheques("20000.00", ["10000.00", "10000.00"])).toBe(20000);
+    expect(calcularCicloTituloFinanceiro({ ...titulo, baixas: [{ valor: "20000.00" }] }))
+      .toMatchObject({ valorBaixado: 20000, saldoAberto: 30541.09, estado: "parcial" });
+    expect(() => validarValorDosCheques("20000.00", ["10000.00", "5000.00"]))
+      .toThrow("A soma dos cheques deve ser exatamente igual ao valor da baixa");
+    expect(() => validarValorBaixaContraSaldo("50541.10", "50541.09"))
+      .toThrow("não pode exceder o saldo em aberto");
+
+    expect(calcularCicloTituloFinanceiro({
+      ...titulo,
+      baixas: [{ valor: "10000.00" }, { valor: "20000.00" }, { valor: "5000.00", estornada: true }],
+    })).toMatchObject({ valorBaixado: 30000, saldoAberto: 20541.09, estado: "parcial" });
   });
 
   it("desconsidera baixas estornadas e preserva cancelado ou vencido como estados finais", () => {

@@ -163,47 +163,6 @@ export function calcularCicloTituloFinanceiro(input: {
   };
 }
 
-export function resumirRecebimentosVenda(input: {
-  totalVenda: string | number;
-  titulos: Array<{
-    id: number;
-    valorOriginal: string | number;
-    desconto?: string | number;
-    juros?: string | number;
-    dataVencimento: Date;
-    estado: string;
-  }>;
-  baixas: Array<{ tituloId: number; valor: string | number; estornada?: boolean | number | null }>;
-  agora?: Date;
-}) {
-  const titulos = input.titulos.map((titulo) => {
-    const baixasDoTitulo = input.baixas.filter((baixa) => baixa.tituloId === titulo.id);
-    const ciclo = calcularCicloTituloFinanceiro({
-      valorOriginal: titulo.valorOriginal,
-      desconto: titulo.desconto,
-      juros: titulo.juros,
-      dataVencimento: titulo.dataVencimento,
-      baixas: baixasDoTitulo,
-      cancelado: titulo.estado === "cancelado",
-      agora: input.agora,
-    });
-    return {
-      id: titulo.id,
-      valorDevido: ciclo.valorDevido,
-      valorRecebido: ciclo.valorBaixado,
-      saldoAberto: titulo.estado === "cancelado" ? 0 : ciclo.saldoAberto,
-      estado: titulo.estado === "cancelado" ? "cancelado" : ciclo.estado,
-    };
-  });
-  const titulosAtivos = titulos.filter((titulo) => titulo.estado !== "cancelado");
-  return {
-    totalVenda: decimalParaNumero(input.totalVenda),
-    totalRecebido: titulos.reduce((total, titulo) => total + titulo.valorRecebido, 0),
-    saldoEmAberto: titulosAtivos.reduce((total, titulo) => total + titulo.saldoAberto, 0),
-    titulos,
-  };
-}
-
 export function podeCancelarTituloFinanceiro(valorBaixado: string | number | null | undefined): boolean {
   return decimalParaNumero(valorBaixado) <= CENTAVOS_EPSILON;
 }
