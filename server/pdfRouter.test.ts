@@ -238,8 +238,8 @@ describe("autorização HTTP das rotas PDF por módulo", () => {
   ];
   const perfisVendas = ["proprietario", "administrador", "vendas"];
   const perfisProducao = ["proprietario", "administrador", "producao"];
-  const perfisSemAcessoVendas = ["financeiro", "rh", "producao"];
-  const perfisSemAcessoProducao = ["financeiro", "rh", "vendas"];
+  const perfisSemAcessoVendas = ["financeiro", "rh", "producao", "consulta"];
+  const perfisSemAcessoProducao = ["financeiro", "rh", "vendas", "consulta"];
 
   function prepararDadosPdfSemResultados() {
     vi.spyOn(db, "getOrcamentoWithItems").mockResolvedValue(undefined);
@@ -285,10 +285,25 @@ describe("autorização HTTP das rotas PDF por módulo", () => {
   it.each(casosNegados)("nega $papel em $rota com 403", async ({ rota, req, papel }) => {
     vi.spyOn(db, "getUserById").mockResolvedValue({ id: 1, papel, role: "user" } as any);
     const res = createResponse();
+    const consultaEstoque = vi.spyOn(db, "getRelatorioPlaquetasEstoque");
+    const consultaRomaneios = vi.spyOn(db, "getRelatorioRomaneiosCarga");
+    const consultaProducao = vi.spyOn(db, "getRomaneioProducaoComItens");
+    const consultaCarga = vi.spyOn(db, "getRomaneioCargaComPlaquetas");
+    const consultaOrcamento = vi.spyOn(db, "getOrcamentoWithItems");
 
     await routes[rota](req, res);
 
     expect(res.status).toHaveBeenCalledWith(403);
+    if (papel === "consulta") {
+      expect(pdfCanvas.drawText).not.toHaveBeenCalled();
+      expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.send).not.toHaveBeenCalled();
+      expect(consultaEstoque).not.toHaveBeenCalled();
+      expect(consultaRomaneios).not.toHaveBeenCalled();
+      expect(consultaProducao).not.toHaveBeenCalled();
+      expect(consultaCarga).not.toHaveBeenCalled();
+      expect(consultaOrcamento).not.toHaveBeenCalled();
+    }
   });
 
   const todasRotas = [...rotasVendas, ...rotasProducao];

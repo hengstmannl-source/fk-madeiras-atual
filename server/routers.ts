@@ -6,7 +6,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { ENV } from "./_core/env";
 import { criarUrlPublica } from "./_core/publicUrl";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, PAPEIS_CONVIDAVEIS, papelConvidavelValido, papelOperacionalValido, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { COOKIE_SESSAO_LOCAL, criarSessaoLocal, DURACAO_SESSAO_LOCAL_MS, gerarHashSenha, HASH_SENHA_DUMMY, normalizarEmail, validarSenha } from "./autenticacao-local";
 import { limparFalhasCredencial, registrarFalhaCredencial } from "./_core/loginCredentialBackoff";
 import * as db from "./db";
@@ -25,7 +25,12 @@ import { publicUser } from "./_core/publicUser";
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => publicUser(opts.ctx.user)),
+    me: publicProcedure.query(opts => {
+      if (opts.ctx.user && !papelOperacionalValido(opts.ctx.user.papel)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "O seu utilizador não possui um perfil operacional válido." });
+      }
+      return publicUser(opts.ctx.user);
+    }),
     contexto: protectedProcedure.query(async ({ ctx }) => ({
       usuario: publicUser(ctx.user),
       empresa: ctx.configuracaoEmpresa,
@@ -44,7 +49,7 @@ export const appRouter = router({
           await new Promise(resolve => setTimeout(resolve, atraso));
           throw erroPadrao;
         }
-        if (!acesso.usuario.papel) throw new TRPCError({ code: "FORBIDDEN", message: "O utilizador não possui um perfil operacional ativo." });
+        if (!papelOperacionalValido(acesso.usuario.papel)) throw new TRPCError({ code: "FORBIDDEN", message: "O utilizador não possui um perfil operacional válido." });
         await db.limparFalhasAutenticacao(acesso.credencial.id);
         limparFalhasCredencial(emailNormalizado);
         const token = criarSessaoLocal(acesso.usuario.id);
@@ -61,7 +66,7 @@ export const appRouter = router({
   equipe: router({
     listar: adminProcedure.query(() => db.listarUsuariosDoSistema()),
     criarConvite: adminProcedure
-      .input(z.object({ email: z.string().email(), papel: z.enum(["administrador", "financeiro", "rh", "vendas", "producao", "consulta"]) }))
+      .input(z.object({ email: z.string().email(), papel: z.enum(PAPEIS_CONVIDAVEIS) }))
       .mutation(async ({ ctx, input }) => {
         const papelAtual = ctx.user.papel;
         if (papelAtual !== "proprietario" && papelAtual !== "administrador") {
@@ -91,15 +96,20 @@ export const appRouter = router({
       .input(z.object({ token: z.string().min(20).max(200) }))
       .query(async ({ input }) => {
         const convite = await db.getConviteValidoPorHash(createHash("sha256").update(input.token).digest("hex"));
-        if (!convite) throw new TRPCError({ code: "NOT_FOUND", message: "Este convite é inválido ou expirou." });
+        if (!convite || !papelConvidavelValido(convite.convite.papel)) throw new TRPCError({ code: "NOT_FOUND", message: "Este convite é inválido ou expirou." });
         return { email: convite.convite.emailNormalizado, papel: convite.convite.papel };
       }),
     aceitarConvite: publicProcedure
       .input(z.object({ token: z.string().min(20).max(200), nome: z.string().trim().min(2).max(300), senha: z.string().min(8).max(200).regex(/[A-Z]/).regex(/[0-9]/) }))
       .mutation(async ({ ctx, input }) => {
         try {
+          const tokenHash = createHash("sha256").update(input.token).digest("hex");
+          const convite = await db.getConviteValidoPorHash(tokenHash);
+          if (!convite || !papelConvidavelValido(convite.convite.papel)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Este convite é inválido ou expirou." });
+          }
           const criado = await db.aceitarConviteCriandoUsuario({
-            tokenHash: createHash("sha256").update(input.token).digest("hex"),
+            tokenHash,
             nome: input.nome,
             senhaHash: await gerarHashSenha(input.senha),
             openId: `local:${randomBytes(24).toString("hex")}`,

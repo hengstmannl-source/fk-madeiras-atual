@@ -27,6 +27,7 @@ import { sugerirConciliacoes } from "../conciliacao.logic";
 import { numerarDuplicidadesPlaquetas } from "../../shared/plaquetas";
 
 import { getDb } from "./core";
+import { papelConvidavelValido, type PapelConvidavel } from "../_core/trpc";
 import { getInsertedId } from "./catalogo";
 
 type MysqlInsertResult = readonly [{ insertId?: number | bigint }, unknown];
@@ -129,7 +130,7 @@ export async function listarUsuariosDoSistema() {
 
 export async function criarConviteEmpresa(data: {
   emailNormalizado: string;
-  papel: "administrador" | "financeiro" | "rh" | "vendas" | "producao" | "consulta";
+  papel: PapelConvidavel;
   tokenHash: string;
   expiraEm: Date;
   convidadoPor: number;
@@ -152,7 +153,7 @@ export async function getConviteValidoPorHash(tokenHash: string) {
     .where(and(eq(convitesEmpresa.tokenHash, tokenHash), eq(convitesEmpresa.empresaId, empresaId)))
     .limit(1);
   const encontrado = result[0];
-  if (!encontrado || encontrado.convite.aceitoEm || encontrado.convite.canceladoEm || encontrado.convite.expiraEm <= new Date() || !encontrado.empresa.ativa) return undefined;
+  if (!encontrado || encontrado.convite.aceitoEm || encontrado.convite.canceladoEm || encontrado.convite.expiraEm <= new Date() || !encontrado.empresa.ativa || !papelConvidavelValido(encontrado.convite.papel)) return undefined;
   return encontrado;
 }
 
@@ -172,7 +173,7 @@ export async function aceitarConviteCriandoUsuario(data: {
       .where(and(eq(convitesEmpresa.tokenHash, data.tokenHash), eq(convitesEmpresa.empresaId, empresaId)))
       .limit(1);
     const convite = resultadoConvite[0];
-    if (!convite || convite.aceitoEm || convite.canceladoEm || convite.expiraEm <= new Date()) {
+    if (!convite || convite.aceitoEm || convite.canceladoEm || convite.expiraEm <= new Date() || !papelConvidavelValido(convite.papel)) {
       throw new Error("CONVITE_INVALIDO");
     }
 
