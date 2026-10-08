@@ -121,6 +121,11 @@ async function garantirVendaDaEmpresa(id: number, empresaId: number) {
   return venda;
 }
 
+export function determinarEstadoInicialOrcamento(estado: "rascunho" | "enviado" | "aprovado" | "rejeitado", duplicado: boolean) {
+  if (duplicado) return "rascunho" as const;
+  return estado === "aprovado" ? "rascunho" as const : estado;
+}
+
 export const orcamentoRouter = router({
   produtosComerciais: router({
     list: protectedProcedure.input(z.object({ incluirInativos: z.boolean().default(false) }).optional())
@@ -181,6 +186,7 @@ export const orcamentoRouter = router({
   create: protectedProcedure
     .input(z.object({
       clienteId: z.number().int().positive(),
+      duplicadoDeId: z.number().int().positive().optional(),
       estado: z.enum(["rascunho", "enviado", "aprovado", "rejeitado"]).default("rascunho"),
       desconto: z.string().max(4000).default("0"),
       frete: z.string().max(4000).default("0"),
@@ -203,14 +209,17 @@ export const orcamentoRouter = router({
       totalVolume: z.string().max(4000),
       observacoes: z.string().max(4000).optional(),
       vendedor: z.string().max(300).optional(),
+      dataValidade: DataFinanceiraSchema.optional(),
       dataVencimento: DataFinanceiraSchema.optional(),
       competencia: DataFinanceiraSchema.optional(),
       itens: z.array(ItemSchema).max(2000),
       aproveitamentos: z.array(AproveitamentoVendaSchema).max(30).default([]),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.duplicadoDeId !== undefined) await garantirVendaDaEmpresa(input.duplicadoDeId, ctx.configuracaoEmpresa.id);
       const now = new Date();
-      const estadoInicial = input.estado === "aprovado" ? "rascunho" : input.estado;
+      const estadoSolicitadoEfetivo = input.duplicadoDeId !== undefined ? "rascunho" : input.estado;
+      const estadoInicial = determinarEstadoInicialOrcamento(estadoSolicitadoEfetivo, false);
       const itensComComposicaoNormalizada = input.itens.map((item) => ({
         ...item,
         unidadesPorComercializacao: item.tipoComercializacao === "pacote"
@@ -250,6 +259,7 @@ export const orcamentoRouter = router({
           vendedor: input.vendedor ?? null,
           criadoPor: ctx.user.id,
           empresaId: ctx.configuracaoEmpresa.id,
+          dataValidade: input.dataValidade ? parseDataFinanceira(input.dataValidade) : null,
           dataVencimento: input.dataVencimento ? parseDataFinanceira(input.dataVencimento) : now,
           competencia: input.competencia ? parseDataFinanceira(input.competencia) : now,
         },
@@ -257,7 +267,7 @@ export const orcamentoRouter = router({
         input.aproveitamentos,
         taxasAdicionais,
       );
-      if (input.estado === "aprovado") {
+      if (estadoSolicitadoEfetivo === "aprovado") {
         await db.updateOrcamentoEstado(orcamento.id, "aprovado", ctx.user.id);
       }
       return orcamento;
@@ -369,10 +379,4 @@ export const orcamentoRouter = router({
       .mutation(({ ctx, input }) => db.deleteModeloMedidaVenda(input.id, ctx.user.id)),
   }),
 
-  duplicate: protectedProcedure
-    .input(z.object({ id: z.number().int().positive() }))
-    .mutation(async ({ ctx, input }) => {
-      await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
-      return db.duplicateOrcamento(input.id);
-    }),
 });

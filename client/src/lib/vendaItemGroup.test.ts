@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { criarItemVendaComercial, criarItensVendaPorMedida, criarLinhasComprimentoPadraoVenda, criarLinhasComprimentoVazias, obterIndiceTabPorColunaVenda, resumirItensVendaPorBitola } from "./vendaItemGroup";
+import { atualizarItemVenda, criarItemVendaComercial, criarItensVendaPorMedida, criarLinhasComprimentoPadraoVenda, criarLinhasComprimentoVazias, obterIndiceTabPorColunaVenda, resumirItensVendaPorBitola } from "./vendaItemGroup";
 
 describe("lançamento agrupado de itens de venda", () => {
   it("cria linhas vazias suficientes para iniciar um romaneio de comprimentos", () => {
@@ -113,6 +113,31 @@ describe("lançamento agrupado de itens de venda", () => {
       .toMatchObject({ erro: expect.stringMatching(/composição/i) });
     expect(criarItemVendaComercial({ madeiraNome: "Pacote", tipoComercializacao: "pacote", quantidade: "0", precoComercial: "750" }))
       .toMatchObject({ erro: expect.stringMatching(/quantidade/i) });
+  });
+
+  it("recalcula item por m³ quando dimensão, comprimento, quantidade ou preço são editados", () => {
+    const inicial = criarItensVendaPorMedida({
+      madeiraNome: "Cedrinho", precoM3: "2400", espessuraCm: "2", larguraCm: "5",
+      linhas: [{ id: 1, comprimento: "3", quantidade: "2" }],
+    }).itens[0];
+
+    const editado = atualizarItemVenda(inicial, { espessura: "30", largura: "50", comprimento: "4", quantidade: 3, precoM3: "3000" });
+    expect(editado).toMatchObject({ bitolaDescricao: "3×5 cm", espessura: "30", largura: "50", comprimento: "4", quantidade: 3, precoM3: "3000", precoLinear: "4.5", valorPeca: "18", valorTotal: "54" });
+    expect(editado.bitolaId).toBeNull();
+  });
+
+  it("recalcula preço e quantidade em item por unidade", () => {
+    const inicial = criarItemVendaComercial({ madeiraNome: "Portal", tipoComercializacao: "unidade", quantidade: "2", precoComercial: "100" }).item!;
+    expect(atualizarItemVenda(inicial, { quantidade: 3, precoM3: "125,50", madeiraNome: "Portal reforçado" }))
+      .toMatchObject({ madeiraNome: "Portal reforçado", quantidade: 3, valorPeca: "125.5", valorTotal: "376.5" });
+  });
+
+  it("recalcula composição e total de pacote sem perder componentes editados", () => {
+    const inicial = criarItemVendaComercial({ madeiraNome: "Pacote", tipoComercializacao: "pacote", quantidade: "2", precoComercial: "750", componentesPacote: [{ descricao: "Tábua", quantidade: 6 }] }).item!;
+    const editado = atualizarItemVenda(inicial, { quantidade: 3, precoM3: "800", componentesPacote: [{ descricao: "Tábua alterada", quantidade: 4 }, { descricao: "Ripa", quantidade: 2 }] });
+
+    expect(editado).toMatchObject({ quantidade: 3, unidadesPorComercializacao: 6, valorPeca: "800", valorTotal: "2400" });
+    expect(editado.componentesPacote.map((componente) => componente.descricao)).toEqual(["Tábua alterada", "Ripa"]);
   });
 
   it("resume peças e participação volumétrica por bitola", () => {

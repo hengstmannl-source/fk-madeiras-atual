@@ -57,6 +57,53 @@ export type ItemVendaCalculado = {
   componentesPacote: ComponentePacoteVenda[];
 };
 
+export type AlteracoesItemVenda = Partial<Pick<ItemVendaCalculado,
+  "madeiraId" | "produtoComercialId" | "madeiraNome" | "bitolaId" | "bitolaDescricao" |
+  "espessura" | "largura" | "comprimento" | "quantidade" | "precoM3" | "componentesPacote"
+>>;
+
+/** Atualiza uma linha e recalcula seus valores com as mesmas fórmulas da criação. */
+export function atualizarItemVenda(item: ItemVendaCalculado, alteracoes: AlteracoesItemVenda): ItemVendaCalculado {
+  const atualizado = { ...item, ...alteracoes };
+  const quantidade = Number.isFinite(atualizado.quantidade) ? atualizado.quantidade : 0;
+
+  if (atualizado.tipoComercializacao === "metro_cubico") {
+    const espessura = parseDecimalInput(atualizado.espessura);
+    const largura = parseDecimalInput(atualizado.largura);
+    const comprimento = parseDecimalInput(atualizado.comprimento);
+    const precoM3 = parseDecimalInput(atualizado.precoM3);
+    const dimensoesValidas = espessura > 0 && largura > 0;
+    const precoLinear = dimensoesValidas && Number.isFinite(precoM3)
+      ? calculatePrecoLinear(espessura, largura, precoM3)
+      : 0;
+    const valorPeca = comprimento > 0 ? calculateValorPeca(precoLinear, comprimento) : 0;
+    return {
+      ...atualizado,
+      bitolaId: alteracoes.espessura !== undefined || alteracoes.largura !== undefined ? null : atualizado.bitolaId,
+      bitolaDescricao: dimensoesValidas
+        ? `${formatDimensionCm(espessura)}×${formatDimensionCm(largura)} cm`
+        : "",
+      precoLinear: String(parseFloat(precoLinear.toFixed(4))),
+      valorPeca: String(parseFloat(valorPeca.toFixed(2))),
+      valorTotal: String(parseFloat(calculateValorTotal(valorPeca, quantidade).toFixed(2))),
+    };
+  }
+
+  const precoComercial = parseDecimalInput(atualizado.precoM3);
+  const valorPeca = Number.isFinite(precoComercial) ? precoComercial : 0;
+  const unidadesPorComercializacao = atualizado.tipoComercializacao === "pacote"
+    ? atualizado.componentesPacote.reduce((total, componente) => total + (Number.isFinite(componente.quantidade) ? componente.quantidade : 0), 0)
+    : 1;
+
+  return {
+    ...atualizado,
+    unidadesPorComercializacao,
+    precoLinear: "0",
+    valorPeca: String(parseFloat(valorPeca.toFixed(2))),
+    valorTotal: String(parseFloat(calculateValorTotal(valorPeca, quantidade).toFixed(2))),
+  };
+}
+
 export type ComponentePacoteVenda = {
   descricao: string;
   madeiraNome?: string | null;

@@ -443,80 +443,82 @@ export async function createOrcamento(
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(orcamentos).values(data);
-  const orcId = result[0].insertId;
-  if (itens.length > 0) {
-    const itensWithOrcId: InsertItemOrcamento[] = itens.map((i): InsertItemOrcamento => ({
-      empresaId: data.empresaId,
-      orcamentoId: orcId,
-      madeiraId: i.madeiraId ?? null,
-      bitolaId: i.bitolaId!,
-      madeiraNome: i.madeiraNome!,
-      bitolaDescricao: i.bitolaDescricao!,
-      espessura: i.espessura!,
-      largura: i.largura!,
-      comprimento: i.comprimento!,
-      quantidade: i.quantidade!,
-      produtoComercialId: i.produtoComercialId ?? null,
-      tipoComercializacao: i.tipoComercializacao ?? "metro_cubico",
-      unidadesPorComercializacao: i.unidadesPorComercializacao ?? 1,
-      precoM3: i.precoM3!,
-      precoLinear: i.precoLinear!,
-      valorPeca: i.valorPeca!,
-      valorTotal: i.valorTotal!,
-    }));
-    for (let indice = 0; indice < itensWithOrcId.length; indice += 1) {
-      const item = itensWithOrcId[indice];
-      const resultadoItem = await db.insert(itensOrcamento).values(item);
-      const componentes = itens[indice].componentesPacote ?? [];
-      if (!componentes.length) continue;
-      await db.insert(componentesPacoteOrcamento).values(componentes.map((componente): InsertComponentePacoteOrcamento => ({
-        empresaId: data.empresaId,
-        itemOrcamentoId: Number(resultadoItem[0].insertId),
-        descricao: componente.descricao,
-        madeiraNome: componente.madeiraNome ?? null,
-        espessura: componente.espessura ?? null,
-        largura: componente.largura ?? null,
-        comprimento: componente.comprimento ?? null,
-        quantidadePorPacote: componente.quantidade,
-      })));
-    }
-  }
-  if (aproveitamentos.length > 0) {
-    await db.insert(aproveitamentosOrcamento).values(aproveitamentos.map((item) => {
-      const volume = Number(item.volume);
-      const precoM3 = Number(item.precoM3);
-      return {
+  return db.transaction(async (tx) => {
+    const result = await tx.insert(orcamentos).values(data);
+    const orcId = result[0].insertId;
+    if (itens.length > 0) {
+      const itensWithOrcId: InsertItemOrcamento[] = itens.map((i): InsertItemOrcamento => ({
         empresaId: data.empresaId,
         orcamentoId: orcId,
-        madeiraNome: item.madeiraNome,
-        volume: volume.toFixed(3),
-        precoM3: precoM3.toFixed(2),
-        valorTotal: (volume * precoM3).toFixed(2),
-      };
-    }));
-  }
-  if (taxasAdicionais.length > 0) {
-    await db.insert(taxasAdicionaisOrcamento).values(taxasAdicionais.map((taxa, indice) => ({
-      empresaId: data.empresaId,
-      orcamentoId: orcId,
-      descricao: taxa.descricao.trim(),
-      tipo: taxa.tipo,
-      valor: Number(taxa.valor.replace(",", ".")).toFixed(4),
-      calculado: Number(taxa.calculado.replace(",", ".")).toFixed(2),
-      ordem: taxa.ordem ?? indice,
-    })));
-  }
-  if (data.criadoPor) {
-    await db.insert(historicoAlteracoes).values({
-      empresaId: data.empresaId,
-      orcamentoId: orcId,
-      usuarioId: data.criadoPor,
-      tipo: "criacao" as any,
-      detalhes: JSON.stringify({ numero: data.numero, estado: data.estado }),
-    });
-  }
-  return { id: orcId };
+        madeiraId: i.madeiraId ?? null,
+        bitolaId: i.bitolaId!,
+        madeiraNome: i.madeiraNome!,
+        bitolaDescricao: i.bitolaDescricao!,
+        espessura: i.espessura!,
+        largura: i.largura!,
+        comprimento: i.comprimento!,
+        quantidade: i.quantidade!,
+        produtoComercialId: i.produtoComercialId ?? null,
+        tipoComercializacao: i.tipoComercializacao ?? "metro_cubico",
+        unidadesPorComercializacao: i.unidadesPorComercializacao ?? 1,
+        precoM3: i.precoM3!,
+        precoLinear: i.precoLinear!,
+        valorPeca: i.valorPeca!,
+        valorTotal: i.valorTotal!,
+      }));
+      for (let indice = 0; indice < itensWithOrcId.length; indice += 1) {
+        const item = itensWithOrcId[indice];
+        const resultadoItem = await tx.insert(itensOrcamento).values(item);
+        const componentes = itens[indice].componentesPacote ?? [];
+        if (!componentes.length) continue;
+        await tx.insert(componentesPacoteOrcamento).values(componentes.map((componente): InsertComponentePacoteOrcamento => ({
+          empresaId: data.empresaId,
+          itemOrcamentoId: Number(resultadoItem[0].insertId),
+          descricao: componente.descricao,
+          madeiraNome: componente.madeiraNome ?? null,
+          espessura: componente.espessura ?? null,
+          largura: componente.largura ?? null,
+          comprimento: componente.comprimento ?? null,
+          quantidadePorPacote: componente.quantidade,
+        })));
+      }
+    }
+    if (aproveitamentos.length > 0) {
+      await tx.insert(aproveitamentosOrcamento).values(aproveitamentos.map((item) => {
+        const volume = Number(item.volume);
+        const precoM3 = Number(item.precoM3);
+        return {
+          empresaId: data.empresaId,
+          orcamentoId: orcId,
+          madeiraNome: item.madeiraNome,
+          volume: volume.toFixed(3),
+          precoM3: precoM3.toFixed(2),
+          valorTotal: (volume * precoM3).toFixed(2),
+        };
+      }));
+    }
+    if (taxasAdicionais.length > 0) {
+      await tx.insert(taxasAdicionaisOrcamento).values(taxasAdicionais.map((taxa, indice) => ({
+        empresaId: data.empresaId,
+        orcamentoId: orcId,
+        descricao: taxa.descricao.trim(),
+        tipo: taxa.tipo,
+        valor: Number(taxa.valor.replace(",", ".")).toFixed(4),
+        calculado: Number(taxa.calculado.replace(",", ".")).toFixed(2),
+        ordem: taxa.ordem ?? indice,
+      })));
+    }
+    if (data.criadoPor) {
+      await tx.insert(historicoAlteracoes).values({
+        empresaId: data.empresaId,
+        orcamentoId: orcId,
+        usuarioId: data.criadoPor,
+        tipo: "criacao" as any,
+        detalhes: JSON.stringify({ numero: data.numero, estado: data.estado }),
+      });
+    }
+    return { id: orcId };
+  });
 }
 
 export async function updateOrcamento(id: number, data: Partial<InsertOrcamento>, confirmacaoDupla = false) {
@@ -651,73 +653,6 @@ export async function registrarPagamentoOrcamento(id: number, userId: number, fo
     detalhes: JSON.stringify({ acao: "pagamento_registrado", formaPagamento, pagoEm: pagoEm.toISOString() }),
   });
   return { success: true, pagoEm, formaPagamento };
-}
-
-export async function duplicateOrcamento(id: number) {
-  const empresaId = (await getEmpresaUnica()).id;
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const data = await getOrcamentoWithItems(id);
-  if (!data) throw new Error("Orçamento não encontrado");
-  const { orcamento, itens } = data;
-  const novoOrc: InsertOrcamento = {
-    empresaId: orcamento.empresaId,
-    numero: null,
-    clienteId: orcamento.clienteId,
-    estado: "rascunho",
-    desconto: orcamento.desconto,
-    frete: orcamento.frete,
-    fretePorTonelada: orcamento.fretePorTonelada,
-    pesoCargaToneladas: orcamento.pesoCargaToneladas,
-    abatimentoFrete: orcamento.abatimentoFrete,
-    baseAposFrete: orcamento.baseAposFrete,
-    comissaoTipo: orcamento.comissaoTipo,
-    comissaoValor: orcamento.comissaoValor,
-    comissaoCalculada: orcamento.comissaoCalculada,
-    taxaDescricao: orcamento.taxaDescricao,
-    taxaTipo: orcamento.taxaTipo,
-    taxaValor: orcamento.taxaValor,
-    taxaCalculada: orcamento.taxaCalculada,
-    subtotal: orcamento.subtotal,
-    total: orcamento.total,
-    totalPecas: orcamento.totalPecas,
-    totalMetroLinear: orcamento.totalMetroLinear,
-    totalVolume: orcamento.totalVolume,
-    observacoes: orcamento.observacoes,
-    vendedor: orcamento.vendedor,
-    criadoPor: orcamento.criadoPor,
-    dataVencimento: orcamento.dataVencimento,
-    competencia: orcamento.competencia,
-    pago: false,
-    pagoEm: null,
-    formaPagamento: null,
-    pagoPor: null,
-  };
-  const novosItens: Omit<InsertItemOrcamento, "id">[] = itens.map(i => ({
-    empresaId: orcamento.empresaId,
-    orcamentoId: 0, // will be replaced by createOrcamento
-    madeiraId: i.madeiraId,
-    bitolaId: i.bitolaId,
-    madeiraNome: i.madeiraNome,
-    bitolaDescricao: i.bitolaDescricao,
-    espessura: i.espessura,
-    largura: i.largura,
-    comprimento: i.comprimento,
-    quantidade: i.quantidade,
-    tipoComercializacao: i.tipoComercializacao,
-    unidadesPorComercializacao: i.unidadesPorComercializacao,
-    precoM3: i.precoM3,
-    precoLinear: i.precoLinear,
-    valorPeca: i.valorPeca,
-    valorTotal: i.valorTotal,
-  }));
-  return createOrcamento(novoOrc, novosItens, data.aproveitamentos ?? [], (data.taxasAdicionais ?? []).map((taxa) => ({
-    descricao: taxa.descricao,
-    tipo: taxa.tipo,
-    valor: String(taxa.valor),
-    calculado: String(taxa.calculado),
-    ordem: taxa.ordem,
-  })));
 }
 
 export async function atualizarDatasOrcamento(

@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useState, useMemo } from "react";
+import { type KeyboardEvent, useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,10 +16,12 @@ import {
   calculateVolume,
   formatCurrency,
   formatMeasurement,
+  parseDecimalInput,
 } from "@/lib/utils";
-import { criarItemVendaComercial, criarItensVendaPorMedida, criarLinhasComprimentoPadraoVenda, obterIndiceTabPorColunaVenda, resumirItensVendaPorBitola, rotulosTipoComercializacaoVenda, type ComponentePacoteVenda, type LinhaComprimentoVenda, type TipoComercializacaoVenda } from "@/lib/vendaItemGroup";
+import { atualizarItemVenda, criarItemVendaComercial, criarItensVendaPorMedida, criarLinhasComprimentoPadraoVenda, obterIndiceTabPorColunaVenda, resumirItensVendaPorBitola, rotulosTipoComercializacaoVenda, type ComponentePacoteVenda, type ItemVendaCalculado, type LinhaComprimentoVenda, type TipoComercializacaoVenda } from "@/lib/vendaItemGroup";
 import { disponibilidadeEstoqueVenda, prepararModeloMedida } from "@/lib/vendaMedidas";
 import { calcularAcertoComercial, type TaxaAdicionalComercial } from "@/lib/acertoComercial";
+import { mapearOrcamentoParaDuplicacao } from "@/lib/orcamentoDuplicacao";
 import {
   Dialog,
   DialogContent,
@@ -27,24 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-interface ItemOrcamento {
-  madeiraId: number | null;
-  bitolaId: number | null;
-  produtoComercialId: number | null;
-  madeiraNome: string;
-  bitolaDescricao: string;
-  espessura: string;
-  largura: string;
-  comprimento: string;
-  quantidade: number;
-  tipoComercializacao: TipoComercializacaoVenda;
-  unidadesPorComercializacao: number;
-  precoM3: string;
-  precoLinear: string;
-  valorPeca: string;
-  valorTotal: string;
-  componentesPacote: ComponentePacoteVenda[];
-}
+type ItemOrcamento = ItemVendaCalculado;
 
 interface AproveitamentoVenda {
   madeiraNome: string;
@@ -59,7 +44,12 @@ function dataLocalParaInput(data = new Date()) {
 
 export default function OrcamentoNovo() {
   const [, setLocation] = useLocation();
+  const duplicarRaw = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("duplicar");
+  const duplicarId = duplicarRaw && /^\d+$/.test(duplicarRaw) && Number(duplicarRaw) > 0 ? Number(duplicarRaw) : null;
+  const duplicarInvalido = duplicarRaw !== null && duplicarId === null;
   const clientes = trpc.cliente.list.useQuery();
+  const origemDuplicacao = trpc.orcamento.get.useQuery({ id: duplicarId ?? 1 }, { enabled: duplicarId !== null });
+  const [origemCarregada, setOrigemCarregada] = useState(false);
 
   const [clienteId, setClienteId] = useState("");
   const [clienteSelectorOpen, setClienteSelectorOpen] = useState(false);
@@ -74,6 +64,7 @@ export default function OrcamentoNovo() {
   const [taxasAdicionais, setTaxasAdicionais] = useState<TaxaAdicionalComercial[]>([]);
   const [observacoes, setObservacoes] = useState("");
   const [vendedor, setVendedor] = useState("");
+  const [dataValidade, setDataValidade] = useState("");
   const [dataVencimento, setDataVencimento] = useState(() => dataLocalParaInput());
   const [competencia, setCompetencia] = useState(() => dataLocalParaInput());
   const [itens, setItens] = useState<ItemOrcamento[]>([]);
@@ -100,12 +91,37 @@ export default function OrcamentoNovo() {
   const [modeloOpen, setModeloOpen] = useState(false);
   const [nomeModelo, setNomeModelo] = useState("");
 
+  useEffect(() => {
+    const origem = origemDuplicacao.data;
+    if (!origem || origemCarregada) return;
+    const inicial = mapearOrcamentoParaDuplicacao(origem);
+    setClienteId(inicial.clienteId);
+    setDesconto(inicial.desconto);
+    setFrete(inicial.frete);
+    setPesoCargaToneladas(inicial.pesoCargaToneladas);
+    setComissaoTipo(inicial.comissaoTipo);
+    setComissaoValor(inicial.comissaoValor);
+    setObservacoes(inicial.observacoes);
+    setVendedor(inicial.vendedor);
+    setDataValidade(inicial.dataValidade);
+    setDataVencimento(inicial.dataVencimento);
+    setCompetencia(inicial.competencia);
+    setItens(inicial.itens);
+    setAproveitamentosVenda(inicial.aproveitamentos);
+    setTaxasAdicionais(inicial.taxasAdicionais);
+    setOrigemCarregada(true);
+    toast.success("Dados comerciais carregados. Revise e salve como novo rascunho.");
+  }, [origemDuplicacao.data, origemCarregada]);
+
   const clienteSelecionado = clientes.data?.find((cliente) => cliente.id === Number(clienteId));
   const opcoesMadeira = useMemo(() => (madeiras.data ?? []).map((madeira) => ({
     value: String(madeira.id),
     label: madeira.nome,
     details: `Preço padrão: ${formatCurrency(madeira.precoM3)}/m³`,
   })), [madeiras.data]);
+  const opcoesMadeiraItem = (item: ItemOrcamento) => item.madeiraId && !opcoesMadeira.some((opcao) => opcao.value === String(item.madeiraId))
+    ? [...opcoesMadeira, { value: String(item.madeiraId), label: item.madeiraNome, details: "Referência atual (indisponível no catálogo ativo)" }]
+    : opcoesMadeira;
 
   const totals = useMemo(() => {
     let subtotal = 0;
@@ -207,6 +223,24 @@ export default function OrcamentoNovo() {
   };
 
   const removeItem = (index: number) => setItens(itens.filter((_, i) => i !== index));
+  const atualizarItem = (index: number, alteracoes: Partial<ItemOrcamento>) => {
+    setItens((atuais) => atuais.map((item, itemIndex) => itemIndex === index ? atualizarItemVenda(item, alteracoes) : item));
+  };
+  const atualizarComponenteItem = (itemIndex: number, componenteIndex: number, campo: keyof ComponentePacoteVenda, valor: string | number) => {
+    const item = itens[itemIndex];
+    if (!item) return;
+    atualizarItem(itemIndex, { componentesPacote: item.componentesPacote.map((componente, index) => index === componenteIndex ? { ...componente, [campo]: valor } : componente) });
+  };
+  const adicionarComponenteItem = (itemIndex: number) => {
+    const item = itens[itemIndex];
+    if (!item) return;
+    atualizarItem(itemIndex, { componentesPacote: [...item.componentesPacote, { descricao: "", madeiraNome: "", espessura: "", largura: "", comprimento: "", quantidade: 1 }] });
+  };
+  const removerComponenteItem = (itemIndex: number, componenteIndex: number) => {
+    const item = itens[itemIndex];
+    if (!item) return;
+    atualizarItem(itemIndex, { componentesPacote: item.componentesPacote.filter((_, index) => index !== componenteIndex) });
+  };
 
   const adicionarTaxaAdicional = () => setTaxasAdicionais((taxas) => [...taxas, { descricao: "", tipo: "percentual", valor: "0" }]);
   const atualizarTaxaAdicional = (indice: number, campo: keyof TaxaAdicionalComercial, valor: string) => setTaxasAdicionais((taxas) => taxas.map((taxa, index) => index === indice ? { ...taxa, [campo]: valor } : taxa));
@@ -227,6 +261,7 @@ export default function OrcamentoNovo() {
 
   const create = trpc.orcamento.create.useMutation();
   const utils = trpc.useUtils();
+  const salvandoRef = useRef(false);
 
   const selecionarMadeira = (valor: string) => {
     const madeira = madeiras.data?.find((item) => item.id === Number(valor));
@@ -285,10 +320,26 @@ export default function OrcamentoNovo() {
   };
 
   const handleSave = (estado: "rascunho" | "enviado") => {
+    if (salvandoRef.current || create.isPending) return;
+    if (duplicarId !== null && !origemCarregada) { toast.error("Aguarde o carregamento dos dados da venda original"); return; }
+    if (duplicarId !== null && estado !== "rascunho") { toast.error("A cópia deve iniciar como rascunho"); return; }
     if (!clienteId) { toast.error("Selecione um cliente"); return; }
+    if (duplicarId !== null && (!dataVencimento || !competencia)) { toast.error("Revise e informe vencimento e competência antes de salvar a cópia"); return; }
+    const itemInvalido = itens.find((item) => {
+      if (item.madeiraNome.trim().length < 2 || !Number.isInteger(item.quantidade) || item.quantidade <= 0) return true;
+      if (item.tipoComercializacao === "metro_cubico") {
+        return ![item.espessura, item.largura, item.comprimento, item.precoM3].every((valor) => Number.isFinite(parseDecimalInput(valor)) && parseDecimalInput(valor) > 0);
+      }
+      const preco = parseDecimalInput(item.precoM3);
+      if (!Number.isFinite(preco) || preco < 0) return true;
+      return item.tipoComercializacao === "pacote" && (!item.componentesPacote.length || item.componentesPacote.some((componente) => componente.descricao.trim().length < 2 || !Number.isInteger(componente.quantidade) || componente.quantidade <= 0));
+    });
+    if (itemInvalido) { toast.error("Revise os produtos, quantidades, valores e componentes dos itens"); return; }
     if (itens.length === 0 && aproveitamentosVenda.length === 0) { toast.error("Adicione pelo menos um item ou aproveitamento"); return; }
+    salvandoRef.current = true;
     create.mutate({
       clienteId: Number(clienteId),
+      duplicadoDeId: duplicarId ?? undefined,
       estado,
       desconto,
       frete: String(totals.abatimentoFrete.toFixed(2)),
@@ -309,25 +360,34 @@ export default function OrcamentoNovo() {
       totalVolume: String(totals.totalVolume.toFixed(4)),
       observacoes: observacoes || undefined,
       vendedor: vendedor || undefined,
+      dataValidade: dataValidade || undefined,
       dataVencimento,
       competencia,
-      itens,
+      itens: itens.map(({ madeiraId, bitolaId, produtoComercialId, madeiraNome, bitolaDescricao, espessura, largura, comprimento, quantidade, tipoComercializacao, unidadesPorComercializacao, precoM3, precoLinear, valorPeca, valorTotal, componentesPacote }) => ({ madeiraId, bitolaId, produtoComercialId, madeiraNome, bitolaDescricao, espessura, largura, comprimento, quantidade, tipoComercializacao, unidadesPorComercializacao, precoM3, precoLinear, valorPeca, valorTotal, componentesPacote })),
       aproveitamentos: aproveitamentosVenda,
     }, {
       onSuccess: () => { toast.success(estado === "enviado" ? "Venda enviada!" : "Venda salva!"); utils.orcamento.list.invalidate(); setLocation("/orcamentos"); },
-      onError: (err: any) => toast.error(err.message),
+      onError: (err: any) => { salvandoRef.current = false; toast.error(err.message); },
     });
   };
+
+  if (duplicarInvalido) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Não foi possível duplicar</h1><p className="mt-2 text-sm text-muted-foreground">O identificador da venda original é inválido.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
+  if (duplicarId !== null && origemDuplicacao.isLoading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando dados comerciais da venda…</div>;
+  if (duplicarId !== null && (origemDuplicacao.isError || (origemDuplicacao.isSuccess && !origemDuplicacao.data))) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Não foi possível carregar a venda</h1><p className="mt-2 text-sm text-muted-foreground">A venda não está disponível para esta empresa ou ocorreu uma falha de carregamento.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <Button variant="ghost" onClick={() => setLocation("/orcamentos")} className="mb-2 -ml-2"><ArrowLeft className="h-4 w-4 mr-1" />Voltar</Button>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Nova Venda</h1>
-          <p className="text-sm text-muted-foreground mt-1">Registre a venda de madeira serrada e programe o recebimento</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{duplicarId !== null ? "Duplicar venda" : "Nova Venda"}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{duplicarId !== null ? "Revise e edite os dados comerciais. A cópia só será criada quando você salvar como rascunho." : "Registre a venda de madeira serrada e programe o recebimento"}</p>
         </div>
       </div>
+
+      {duplicarId !== null && <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Esta é uma nova proposta independente. Nenhum orçamento foi criado ainda; aprovação, pagamento, entrega e histórico da origem não serão copiados.</div>}
+      {duplicarId !== null && origemCarregada && (!dataVencimento || !competencia) && <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">A origem não possui todas as datas comerciais. Informe vencimento e competência antes de salvar.</div>}
+      {duplicarId !== null && origemCarregada && clientes.isSuccess && !clientes.data?.some((cliente) => cliente.id === Number(clienteId)) && <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">O cliente original não está disponível na lista atual. Selecione um cliente válido antes de salvar.</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Form */}
@@ -407,10 +467,14 @@ export default function OrcamentoNovo() {
                     </Button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                   <div className="space-y-2">
                     <Label>Vendedor</Label>
                     <Input value={vendedor} onChange={(e) => setVendedor(e.target.value)} placeholder="Nome do vendedor" className="bg-white" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Validade da proposta</Label>
+                    <Input type="date" value={dataValidade} onChange={(e) => setDataValidade(e.target.value)} className="bg-white" />
                   </div>
                   <div className="space-y-2">
                     <Label>Vencimento *</Label>
@@ -543,17 +607,40 @@ export default function OrcamentoNovo() {
                 <h3 className="font-semibold text-sm mb-4">Itens da Venda ({itens.length})</h3>
                 <div className="space-y-2">
                   {itens.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/30">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{item.madeiraNome}{item.tipoComercializacao === "metro_cubico" ? ` — ${item.bitolaDescricao} × ${item.comprimento}m` : ` — ${rotulosTipoComercializacaoVenda[item.tipoComercializacao]}`}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.quantidade} {item.tipoComercializacao === "unidade" ? "un." : item.tipoComercializacao === "pacote" ? "pacote(s)" : "pcs"} × {formatCurrency(item.valorPeca)} = {formatCurrency(item.valorTotal)}
-                        </p>
-                        {item.tipoComercializacao === "pacote" && item.componentesPacote.length > 0 && <p className="mt-1 text-xs text-primary">Composição: {item.componentesPacote.map((componente) => `${componente.quantidade}× ${componente.descricao}`).join(" · ")}</p>}
+                    <div key={`${idx}-${item.tipoComercializacao}`} className="space-y-3 rounded-lg border border-border/50 bg-muted/30 p-3">
+                        <div className="flex items-center gap-2">
+                        <div className="flex-1 space-y-1"><Label htmlFor={`item-nome-${idx}`}>Produto / madeira</Label><Input id={`item-nome-${idx}`} value={item.madeiraNome} onChange={(e) => atualizarItem(idx, { madeiraNome: e.target.value, madeiraId: null, bitolaId: null, produtoComercialId: null })} /></div>
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Excluir item ${item.madeiraNome || idx + 1}`} className="mt-5 h-9 w-9 shrink-0 text-destructive" onClick={() => removeItem(idx)}><Trash2 className="h-4 w-4" /></Button>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeItem(idx)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {item.tipoComercializacao === "metro_cubico" ? (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                          <div className="space-y-1"><Label htmlFor={`item-esp-${idx}`}>Espessura (mm)</Label><Input id={`item-esp-${idx}`} inputMode="decimal" value={item.espessura} onChange={(e) => atualizarItem(idx, { espessura: e.target.value })} /></div>
+                          <div className="space-y-1"><Label htmlFor={`item-larg-${idx}`}>Largura (mm)</Label><Input id={`item-larg-${idx}`} inputMode="decimal" value={item.largura} onChange={(e) => atualizarItem(idx, { largura: e.target.value })} /></div>
+                          <div className="space-y-1"><Label htmlFor={`item-comp-${idx}`}>Comprimento (m)</Label><Input id={`item-comp-${idx}`} inputMode="decimal" value={item.comprimento} onChange={(e) => atualizarItem(idx, { comprimento: e.target.value })} /></div>
+                          <div className="space-y-1"><Label htmlFor={`item-qtd-${idx}`}>Peças</Label><Input id={`item-qtd-${idx}`} type="number" min="1" step="1" value={item.quantidade} onChange={(e) => atualizarItem(idx, { quantidade: Number(e.target.value) })} /></div>
+                          <div className="space-y-1"><Label htmlFor={`item-preco-${idx}`}>Preço por m³ (R$)</Label><Input id={`item-preco-${idx}`} inputMode="decimal" value={item.precoM3} onChange={(e) => atualizarItem(idx, { precoM3: e.target.value })} /></div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <div className="space-y-1"><Label htmlFor={`item-qtd-${idx}`}>{item.tipoComercializacao === "unidade" ? "Quantidade de unidades" : "Quantidade de pacotes"}</Label><Input id={`item-qtd-${idx}`} type="number" min="1" step="1" value={item.quantidade} onChange={(e) => atualizarItem(idx, { quantidade: Number(e.target.value) })} /></div>
+                          <div className="space-y-1"><Label htmlFor={`item-preco-${idx}`}>Preço por {item.tipoComercializacao === "unidade" ? "unidade" : "pacote"} (R$)</Label><Input id={`item-preco-${idx}`} inputMode="decimal" value={item.precoM3} onChange={(e) => atualizarItem(idx, { precoM3: e.target.value })} /></div>
+                          <div className="space-y-1"><Label htmlFor={`produto-catalogo-${idx}`}>Vincular produto cadastrado</Label><select id={`produto-catalogo-${idx}`} className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={item.produtoComercialId ? String(item.produtoComercialId) : "livre"} onChange={(e) => { const produto = produtosComerciais.data?.find((candidato) => candidato.id === Number(e.target.value)); atualizarItem(idx, { produtoComercialId: produto?.id ?? null, ...(produto ? { madeiraNome: produto.nome } : {}) }); }}><option value="livre">Produto descrito livremente</option>{item.produtoComercialId && !produtosComerciais.data?.some((produto) => produto.id === item.produtoComercialId) && <option value={String(item.produtoComercialId)}>{item.madeiraNome} (referência atual indisponível)</option>}{(produtosComerciais.data ?? []).filter((produto) => produto.tipoComercializacao === item.tipoComercializacao).map((produto) => <option key={produto.id} value={produto.id}>{produto.nome}</option>)}</select></div>
+                        </div>
+                      )}
+                      {item.tipoComercializacao === "metro_cubico" && <div className="space-y-1"><Label>Vincular madeira cadastrada (opcional)</Label><SearchableEntitySelect value={item.madeiraId ? String(item.madeiraId) : ""} onValueChange={(value) => { const madeira = madeiras.data?.find((candidata) => candidata.id === Number(value)); atualizarItem(idx, { madeiraId: madeira?.id ?? null, bitolaId: null, madeiraNome: madeira?.nome ?? item.madeiraNome }); }} options={opcoesMadeiraItem(item)} placeholder="Manter nome livre ou selecionar madeira" searchPlaceholder="Pesquisar madeira..." emptyLabel="Nenhuma madeira encontrada." ariaLabel={`Vincular madeira do item ${idx + 1}`} /></div>}
+                      {item.tipoComercializacao === "pacote" && <div className="space-y-2 rounded-md border bg-white p-3">
+                        <div className="flex items-center justify-between gap-2"><div><p className="text-sm font-medium">Componentes do pacote</p><p className="text-xs text-muted-foreground">A composição por pacote é preservada e pode ser editada.</p></div><Button type="button" size="sm" variant="outline" onClick={() => adicionarComponenteItem(idx)}><Plus className="mr-1 h-3.5 w-3.5" />Adicionar componente</Button></div>
+                        {item.componentesPacote.map((componente, componenteIdx) => <div key={componenteIdx} className="grid grid-cols-2 gap-2 rounded border p-2 sm:grid-cols-[1.4fr_1fr_.7fr_.7fr_.7fr_.7fr_auto]">
+                          <Input aria-label={`Descrição do componente ${componenteIdx + 1} de ${item.madeiraNome}`} value={componente.descricao} onChange={(e) => atualizarComponenteItem(idx, componenteIdx, "descricao", e.target.value)} placeholder="Descrição" />
+                          <Input aria-label={`Madeira do componente ${componenteIdx + 1} de ${item.madeiraNome}`} value={componente.madeiraNome ?? ""} onChange={(e) => atualizarComponenteItem(idx, componenteIdx, "madeiraNome", e.target.value)} placeholder="Madeira" />
+                          <Input aria-label={`Espessura do componente ${componenteIdx + 1} de ${item.madeiraNome}`} value={componente.espessura ?? ""} onChange={(e) => atualizarComponenteItem(idx, componenteIdx, "espessura", e.target.value)} placeholder="Espessura" />
+                          <Input aria-label={`Largura do componente ${componenteIdx + 1} de ${item.madeiraNome}`} value={componente.largura ?? ""} onChange={(e) => atualizarComponenteItem(idx, componenteIdx, "largura", e.target.value)} placeholder="Largura" />
+                          <Input aria-label={`Comprimento do componente ${componenteIdx + 1} de ${item.madeiraNome}`} value={componente.comprimento ?? ""} onChange={(e) => atualizarComponenteItem(idx, componenteIdx, "comprimento", e.target.value)} placeholder="Comprimento" />
+                          <Input aria-label={`Quantidade do componente ${componenteIdx + 1} de ${item.madeiraNome}`} type="number" min="1" value={componente.quantidade} onChange={(e) => atualizarComponenteItem(idx, componenteIdx, "quantidade", Number(e.target.value))} />
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Excluir componente ${componenteIdx + 1} de ${item.madeiraNome}`} className="text-destructive" onClick={() => removerComponenteItem(idx, componenteIdx)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>)}
+                      </div>}
+                      <p className="text-xs text-muted-foreground">{item.quantidade} {item.tipoComercializacao === "unidade" ? "un." : item.tipoComercializacao === "pacote" ? "pacote(s)" : "peças"} × {formatCurrency(item.valorPeca)} = <strong>{formatCurrency(item.valorTotal)}</strong> · {rotulosTipoComercializacaoVenda[item.tipoComercializacao]}</p>
                     </div>
                   ))}
                 </div>
@@ -622,12 +709,12 @@ export default function OrcamentoNovo() {
                 <div className="space-y-2"><Label className="text-sm">Observações</Label><Textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder="Notas adicionais" className="bg-white text-sm" rows={3} /></div>
               </div>
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" onClick={() => handleSave("rascunho")} disabled={!clienteId || itens.length === 0} className="flex-1">
-                  <Save className="h-4 w-4 mr-2" />Salvar venda
+                <Button type="button" variant="outline" onClick={() => handleSave("rascunho")} disabled={!clienteId || (itens.length === 0 && aproveitamentosVenda.length === 0) || create.isPending} className="flex-1">
+                  {create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}{duplicarId !== null ? "Salvar cópia como rascunho" : "Salvar venda"}
                 </Button>
-                <Button onClick={() => handleSave("enviado")} disabled={!clienteId || itens.length === 0} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {duplicarId === null && <Button type="button" onClick={() => handleSave("enviado")} disabled={!clienteId || itens.length === 0 || create.isPending} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
                   <Send className="h-4 w-4 mr-2" />Enviar venda
-                </Button>
+                </Button>}
               </div>
             </CardContent>
           </Card>

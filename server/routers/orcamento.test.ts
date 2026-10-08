@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AproveitamentoVendaSchema, CondicaoPagamentoVendaSchema, ItemSchema, RegistroEntregaFisicaSchema } from "./orcamento";
+import { AproveitamentoVendaSchema, CondicaoPagamentoVendaSchema, determinarEstadoInicialOrcamento, ItemSchema, RegistroEntregaFisicaSchema } from "./orcamento";
 import { historicoAlteracoes } from "../../drizzle/schema";
 import { classificarCategoriaOperacionalVenda } from "../db";
 
@@ -45,6 +45,20 @@ describe("itens de orçamento livres", () => {
 
     expect(unidade).toMatchObject({ tipoComercializacao: "unidade", unidadesPorComercializacao: 0, quantidade: 2 });
     expect(() => ItemSchema.parse({ ...unidade, tipoComercializacao: "pacote", quantidade: 0 })).toThrow(/quantidade/i);
+  });
+});
+
+describe("estado inicial da cópia", () => {
+  it("força rascunho para cópias independentemente do estado solicitado ou da origem", () => {
+    expect(determinarEstadoInicialOrcamento("enviado", true)).toBe("rascunho");
+    expect(determinarEstadoInicialOrcamento("aprovado", true)).toBe("rascunho");
+    expect(determinarEstadoInicialOrcamento("rejeitado", true)).toBe("rascunho");
+  });
+
+  it("preserva o estado selecionado na criação normal, exceto aprovação direta já bloqueada", () => {
+    expect(determinarEstadoInicialOrcamento("enviado", false)).toBe("enviado");
+    expect(determinarEstadoInicialOrcamento("rascunho", false)).toBe("rascunho");
+    expect(determinarEstadoInicialOrcamento("aprovado", false)).toBe("rascunho");
   });
 });
 

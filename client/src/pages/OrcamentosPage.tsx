@@ -33,7 +33,6 @@ export default function OrcamentosPage() {
   const orcamentos = trpc.orcamento.list.useQuery(filterEstado !== "todos" ? { estado: filterEstado } : undefined);
   const updateEstado = trpc.orcamento.updateEstado.useMutation();
   const remove = trpc.orcamento.delete.useMutation();
-  const duplicate = trpc.orcamento.duplicate.useMutation();
   const utils = trpc.useUtils();
   const [, setLocation] = useLocation();
   const clientes = trpc.cliente.list.useQuery();
@@ -57,10 +56,7 @@ export default function OrcamentosPage() {
   };
 
   const handleDuplicate = (id: number) => {
-    duplicate.mutate({ id }, {
-      onSuccess: (data: any) => { toast.success("Venda duplicada"); utils.orcamento.list.invalidate(); if (data?.id) setLocation(`/orcamentos/${data.id}`); },
-      onError: (err) => toast.error(err.message),
-    });
+    setLocation(`/orcamentos/novo?duplicar=${id}`);
   };
 
   return (
