@@ -240,7 +240,8 @@ describe("mudança de estado de orçamento", () => {
       select: vi.fn()
         .mockImplementationOnce(() => ({ from: () => ({ where: () => ({ limit: async () => [venda] }) }) }))
         .mockImplementationOnce(() => ({ from: () => ({ where: async () => [itemM3] }) }))
-        .mockImplementationOnce(() => ({ from: () => ({ where: async () => [lote] }) })),
+        .mockImplementationOnce(() => ({ from: () => ({ where: async () => [lote] }) }))
+        .mockImplementationOnce(() => ({ from: () => ({ where: async () => [] }) })),
       update: vi.fn(() => ({ set: (dados: any) => { atualizacoes.push(dados); return { where: async () => undefined }; } })),
       insert: vi.fn(() => ({ values: async (dados: any) => { insercoes.push(dados); return [{ insertId: 1 }]; } })),
     };
@@ -266,6 +267,7 @@ describe("mudança de estado de orçamento", () => {
       select: vi.fn()
         .mockImplementationOnce(() => ({ from: () => ({ where: () => ({ limit: async () => [venda] }) }) }))
         .mockImplementationOnce(() => ({ from: () => ({ where: async () => [itemM3] }) }))
+        .mockImplementationOnce(() => ({ from: () => ({ where: async () => [] }) }))
         .mockImplementationOnce(() => ({ from: () => ({ where: async () => [] }) })),
       update: vi.fn(() => ({ set: () => ({ where: async () => undefined }) })),
       insert: vi.fn(() => ({ values: async (dados: any) => { insercoes.push(dados); return [{ insertId: 401 }]; } })),

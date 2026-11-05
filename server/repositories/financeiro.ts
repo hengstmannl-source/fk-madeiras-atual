@@ -667,9 +667,9 @@ export async function getResumoCaixaCheque() {
   };
 }
 
-export async function getOrCreateCategoriaReceitaVendas(userId: number): Promise<number> {
+export async function getOrCreateCategoriaReceitaVendas(userId: number, database?: any): Promise<number> {
   const empresaId = (await getEmpresaUnica()).id;
-const db = await getDb();
+  const db = database ?? await getDb();
 if (!db) throw new Error("Database not available");
 const existente = await db.select().from(categoriasFinanceiras)
     .where(and(eq(categoriasFinanceiras.nome, "Receitas de vendas"), eq(categoriasFinanceiras.ativo, true), eq(categoriasFinanceiras.empresaId, empresaId))).limit(1);
@@ -2325,9 +2325,9 @@ export async function cancelarTituloFinanceiro(id: number, userId: number, depen
   return typeof db.transaction === "function" ? db.transaction(executar) : executar(db);
 }
 
-export async function criarTituloReceberDeOrcamento(orcamentoId: number, userId: number, dataVencimento: Date | undefined) {
+export async function criarTituloReceberDeOrcamento(orcamentoId: number, userId: number, dataVencimento: Date | undefined, database?: any) {
   const empresaId = (await getEmpresaUnica()).id;
-  const db = await getDb();
+  const db = database ?? await getDb();
   if (!db) throw new Error("Database not available");
   const orcamento = (await db.select().from(orcamentos).where(and(eq(orcamentos.id, orcamentoId), eq(orcamentos.empresaId, empresaId))).limit(1))[0];
   if (!orcamento || orcamento.estado !== "aprovado" || orcamento.pago) return undefined;
@@ -2339,8 +2339,9 @@ export async function criarTituloReceberDeOrcamento(orcamentoId: number, userId:
       ne(titulosFinanceiros.estado, "cancelado"),
     )).limit(1);
   if (existente[0]) return existente[0];
-  const categoriaId = await getOrCreateCategoriaReceitaVendas(userId);
+  const categoriaId = await getOrCreateCategoriaReceitaVendas(userId, database);
   const criacao = await garantirTituloFinanceiroAutomatico({
+    database,
     tipo: "receber",
     origem: "orcamento",
     chaveIdempotencia: `FIN-ORCAMENTO-${orcamentoId}-PARCELA-1`,
@@ -2355,6 +2356,11 @@ export async function criarTituloReceberDeOrcamento(orcamentoId: number, userId:
     competencia: orcamento.competencia,
     criadoPor: userId,
   });
+  if (database) {
+    return (await database.select().from(titulosFinanceiros).where(and(
+      eq(titulosFinanceiros.id, criacao.id), eq(titulosFinanceiros.empresaId, empresaId),
+    )).limit(1))[0];
+  }
   return getTituloFinanceiroById(criacao.id);
 }
 

@@ -14,7 +14,7 @@ describe("dados comerciais para duplicar orçamento", () => {
         madeiraId: 2, bitolaId: null, produtoComercialId: 9, madeiraNome: "Pacote cedrinho",
         bitolaDescricao: "Venda por pacote", espessura: "0", largura: "0", comprimento: "0",
         quantidade: 2, tipoComercializacao: "pacote", unidadesPorComercializacao: 6,
-        precoM3: "750", precoLinear: "0", valorPeca: "750", valorTotal: "1500",
+        precoM3: "750", precoLinear: "999", valorPeca: "999", valorTotal: "999",
         componentesPacote: [{ descricao: "Tábua", madeiraNome: "Cedrinho", espessura: "20", largura: "50", comprimento: "3", quantidadePorPacote: 6 }],
       }],
       aproveitamentos: [{ madeiraNome: "Aproveitamento", volume: "0.25", precoM3: "200" }],
@@ -23,7 +23,7 @@ describe("dados comerciais para duplicar orçamento", () => {
 
     expect(formulario).toMatchObject({
       clienteId: "17", desconto: "5.00", frete: "12.50", pesoCargaToneladas: "3.000",
-      observacoes: "Condição comercial", vendedor: "Ana", itens: [{ tipoComercializacao: "pacote", valorTotal: "1500" }],
+      observacoes: "Condição comercial", vendedor: "Ana", itens: [{ tipoComercializacao: "pacote", valorPeca: "750.00", valorTotal: "1500.00" }],
       taxasAdicionais: [{ descricao: "Taxa", valor: "25.00" }],
       aproveitamentos: [{ madeiraNome: "Aproveitamento", volume: "0.25", precoM3: "200" }],
     });

@@ -12,16 +12,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Plus, Trash2, Save, Send, Loader2, ArrowLeft, Calculator, UserPlus, Check, ChevronsUpDown } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import {
-  calculateVolume,
-  formatCurrency,
-  formatMeasurement,
-  parseDecimalInput,
-} from "@/lib/utils";
+import { formatCurrency, formatMeasurement, parseDecimalInput } from "@/lib/utils";
 import { atualizarItemVenda, criarItemVendaComercial, criarItensVendaPorMedida, criarLinhasComprimentoPadraoVenda, obterIndiceTabPorColunaVenda, resumirItensVendaPorBitola, rotulosTipoComercializacaoVenda, type ComponentePacoteVenda, type ItemVendaCalculado, type LinhaComprimentoVenda, type TipoComercializacaoVenda } from "@/lib/vendaItemGroup";
 import { disponibilidadeEstoqueVenda, prepararModeloMedida } from "@/lib/vendaMedidas";
-import { calcularAcertoComercial, type TaxaAdicionalComercial } from "@/lib/acertoComercial";
+import type { TaxaAdicionalComercial } from "@/lib/acertoComercial";
 import { mapearOrcamentoParaDuplicacao } from "@/lib/orcamentoDuplicacao";
+import { calcularPreviaComercial } from "@shared/comercial.preview";
 import {
   Dialog,
   DialogContent,
@@ -47,11 +43,17 @@ export default function OrcamentoNovo() {
   const duplicarRaw = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("duplicar");
   const duplicarId = duplicarRaw && /^\d+$/.test(duplicarRaw) && Number(duplicarRaw) > 0 ? Number(duplicarRaw) : null;
   const duplicarInvalido = duplicarRaw !== null && duplicarId === null;
+  const revisarRaw = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("revisarInterna");
+  const revisarId = revisarRaw && /^\d+$/.test(revisarRaw) && Number(revisarRaw) > 0 ? Number(revisarRaw) : null;
+  const revisarInvalido = revisarRaw !== null && revisarId === null;
+  const origemId = duplicarId ?? revisarId;
   const clientes = trpc.cliente.list.useQuery();
-  const origemDuplicacao = trpc.orcamento.get.useQuery({ id: duplicarId ?? 1 }, { enabled: duplicarId !== null });
+  const origemDuplicacao = trpc.orcamento.get.useQuery({ id: origemId ?? 1 }, { enabled: origemId !== null });
   const [origemCarregada, setOrigemCarregada] = useState(false);
+  const [motivoRevisao, setMotivoRevisao] = useState("");
 
   const [clienteId, setClienteId] = useState("");
+  const [tipoVenda, setTipoVenda] = useState<"externa" | "interna">("externa");
   const [clienteSelectorOpen, setClienteSelectorOpen] = useState(false);
   const [novoClienteOpen, setNovoClienteOpen] = useState(false);
   const [novoClienteForm, setNovoClienteForm] = useState({ nome: "", contacto: "", email: "", morada: "", nif: "" });
@@ -94,7 +96,9 @@ export default function OrcamentoNovo() {
   useEffect(() => {
     const origem = origemDuplicacao.data;
     if (!origem || origemCarregada) return;
+    if (revisarId !== null && (origem.orcamento.tipoVenda !== "interna" || origem.orcamento.estado !== "aprovado" || origem.orcamento.entregue)) return;
     const inicial = mapearOrcamentoParaDuplicacao(origem);
+    setTipoVenda(inicial.tipoVenda);
     setClienteId(inicial.clienteId);
     setDesconto(inicial.desconto);
     setFrete(inicial.frete);
@@ -110,8 +114,8 @@ export default function OrcamentoNovo() {
     setAproveitamentosVenda(inicial.aproveitamentos);
     setTaxasAdicionais(inicial.taxasAdicionais);
     setOrigemCarregada(true);
-    toast.success("Dados comerciais carregados. Revise e salve como novo rascunho.");
-  }, [origemDuplicacao.data, origemCarregada]);
+    toast.success(revisarId !== null ? "Venda carregada para revisão comercial." : "Dados comerciais carregados. Revise e salve como novo rascunho.");
+  }, [origemDuplicacao.data, origemCarregada, revisarId]);
 
   const clienteSelecionado = clientes.data?.find((cliente) => cliente.id === Number(clienteId));
   const opcoesMadeira = useMemo(() => (madeiras.data ?? []).map((madeira) => ({
@@ -123,31 +127,47 @@ export default function OrcamentoNovo() {
     ? [...opcoesMadeira, { value: String(item.madeiraId), label: item.madeiraNome, details: "Referência atual (indisponível no catálogo ativo)" }]
     : opcoesMadeira;
 
-  const totals = useMemo(() => {
-    let subtotal = 0;
-    let totalPecas = 0;
-    let totalMetroLinear = 0;
-    let totalVolume = 0;
-    for (const item of itens) {
-      const q = item.quantidade;
-      const vp = parseFloat(item.valorPeca) || 0;
-      const comp = parseFloat(item.comprimento) || 0;
-      const esp = parseFloat(item.espessura) || 0;
-      const larg = parseFloat(item.largura) || 0;
-      subtotal += vp * q;
-      totalPecas += q;
-      totalMetroLinear += comp * q;
-      totalVolume += calculateVolume(esp, larg, comp, q);
+  const previaCorrigida = useMemo(() => {
+    if (itens.length === 0 && aproveitamentosVenda.length === 0) return { resultado: null, erro: null };
+    try {
+      return {
+        resultado: calcularPreviaComercial({
+          itens: itens.map((item) => ({
+            madeiraNome: item.madeiraNome,
+            espessura: item.espessura,
+            largura: item.largura,
+            comprimento: item.comprimento,
+            quantidade: item.quantidade,
+            tipoComercializacao: item.tipoComercializacao,
+            precoM3: item.precoM3,
+            componentesPacote: item.componentesPacote,
+          })),
+          aproveitamentos: aproveitamentosVenda,
+          desconto,
+          fretePorTonelada: frete,
+          pesoCargaToneladas,
+          comissao: { tipo: comissaoTipo, valor: comissaoValor },
+          taxas: taxasAdicionais,
+        }),
+        erro: null,
+      };
+    } catch (erro) {
+      return { resultado: null, erro: erro instanceof Error ? erro.message : "Revise os valores comerciais informados" };
     }
-    for (const item of aproveitamentosVenda) {
-      const volume = Number(item.volume.replace(",", ".")) || 0;
-      const precoM3 = Number(item.precoM3.replace(",", ".")) || 0;
-      subtotal += volume * precoM3;
-      totalVolume += volume;
-    }
-    const acerto = calcularAcertoComercial({ subtotal, desconto, fretePorTonelada: frete, pesoCargaToneladas, comissaoTipo, comissaoValor, taxas: taxasAdicionais });
-    return { subtotal, totalPecas, totalMetroLinear, totalVolume, ...acerto };
   }, [itens, aproveitamentosVenda, desconto, frete, pesoCargaToneladas, comissaoTipo, comissaoValor, taxasAdicionais]);
+
+  const itensComPrevia = useMemo(() => itens.map((item, index) => {
+    const calculado = previaCorrigida.resultado?.itens[index];
+    return calculado ? {
+      ...item,
+      precoLinear: calculado.precoLinear,
+      valorPeca: calculado.valorPeca,
+      valorTotal: calculado.valorTotal,
+      unidadesPorComercializacao: item.tipoComercializacao === "metro_cubico" ? 0 : calculado.unidadesPorComercializacao,
+    } : item;
+  }), [itens, previaCorrigida.resultado]);
+
+  const totalsPreview = previaCorrigida.resultado ?? null;
 
   const resumoPorBitola = useMemo(() => resumirItensVendaPorBitola(itens), [itens]);
 
@@ -251,15 +271,23 @@ export default function OrcamentoNovo() {
     [estoqueSerrado.data]);
 
   const adicionarAproveitamento = () => {
-    const volume = Number(aproveitamentoForm.volume.replace(",", "."));
-    const precoM3 = Number(aproveitamentoForm.precoM3.replace(",", "."));
-    if (!aproveitamentoForm.madeiraNome || !Number.isFinite(volume) || volume <= 0) { toast.error("Selecione o aproveitamento e informe um volume positivo"); return; }
-    if (!Number.isFinite(precoM3) || precoM3 < 0) { toast.error("Informe um preço por m³ válido"); return; }
-    setAproveitamentosVenda((atuais) => [...atuais, { ...aproveitamentoForm, volume: String(volume), precoM3: String(precoM3) }]);
+    const volume = aproveitamentoForm.volume.trim().replace(",", ".");
+    const precoM3 = aproveitamentoForm.precoM3.trim().replace(",", ".");
+    if (!aproveitamentoForm.madeiraNome || !volume) { toast.error("Selecione o aproveitamento e informe um volume positivo"); return; }
+    if (!precoM3) { toast.error("Informe um preço por m³ válido"); return; }
+    const tentativa = [...aproveitamentosVenda, { ...aproveitamentoForm, volume, precoM3 }];
+    try {
+      calcularPreviaComercial({ itens: [], aproveitamentos: tentativa, desconto, fretePorTonelada: frete, pesoCargaToneladas, comissao: { tipo: comissaoTipo, valor: comissaoValor }, taxas: taxasAdicionais });
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Revise o aproveitamento informado");
+      return;
+    }
+    setAproveitamentosVenda(tentativa);
     setAproveitamentoForm({ madeiraNome: "", volume: "", precoM3: "" });
   };
 
   const create = trpc.orcamento.create.useMutation();
+  const revisarInterna = trpc.orcamento.revisarInterna.useMutation();
   const utils = trpc.useUtils();
   const salvandoRef = useRef(false);
 
@@ -320,9 +348,13 @@ export default function OrcamentoNovo() {
   };
 
   const handleSave = (estado: "rascunho" | "enviado") => {
-    if (salvandoRef.current || create.isPending) return;
-    if (duplicarId !== null && !origemCarregada) { toast.error("Aguarde o carregamento dos dados da venda original"); return; }
+    if (salvandoRef.current || create.isPending || revisarInterna.isPending) return;
+    if (previaCorrigida.erro) { toast.error(`Corrija os valores da prévia comercial: ${previaCorrigida.erro}`); return; }
+    const resultadoComercial = previaCorrigida.resultado;
+    if (!resultadoComercial) { toast.error("Adicione itens válidos antes de salvar"); return; }
+    if (origemId !== null && !origemCarregada) { toast.error("Aguarde o carregamento dos dados da venda original"); return; }
     if (duplicarId !== null && estado !== "rascunho") { toast.error("A cópia deve iniciar como rascunho"); return; }
+    if (revisarId !== null && motivoRevisao.trim().length < 3) { toast.error("Informe o motivo da revisão comercial"); return; }
     if (!clienteId) { toast.error("Selecione um cliente"); return; }
     if (duplicarId !== null && (!dataVencimento || !competencia)) { toast.error("Revise e informe vencimento e competência antes de salvar a cópia"); return; }
     const itemInvalido = itens.find((item) => {
@@ -337,54 +369,59 @@ export default function OrcamentoNovo() {
     if (itemInvalido) { toast.error("Revise os produtos, quantidades, valores e componentes dos itens"); return; }
     if (itens.length === 0 && aproveitamentosVenda.length === 0) { toast.error("Adicione pelo menos um item ou aproveitamento"); return; }
     salvandoRef.current = true;
-    create.mutate({
+    const payload = {
       clienteId: Number(clienteId),
+      tipoVenda,
       duplicadoDeId: duplicarId ?? undefined,
       estado,
       desconto,
-      frete: String(totals.abatimentoFrete.toFixed(2)),
+      frete: resultadoComercial.abatimentoFrete,
       fretePorTonelada: frete || undefined,
       pesoCargaToneladas: pesoCargaToneladas || undefined,
-      abatimentoFrete: String(totals.abatimentoFrete.toFixed(2)),
-      baseAposFrete: String(totals.baseAposFrete.toFixed(2)),
+      abatimentoFrete: resultadoComercial.abatimentoFrete,
+      baseAposFrete: resultadoComercial.baseAposFrete,
       comissaoTipo,
       comissaoValor: comissaoValor || undefined,
-      comissaoCalculada: String(totals.comissaoCalculada.toFixed(2)),
-      taxasAdicionais: totals.taxasCalculadas
-        .filter((taxa) => taxa.descricao.trim() || Number(taxa.valor.replace(",", ".")) > 0)
-        .map((taxa) => ({ descricao: taxa.descricao.trim(), tipo: taxa.tipo, valor: taxa.valor })),
-      subtotal: String(totals.subtotal.toFixed(2)),
-      total: String(totals.total.toFixed(2)),
-      totalPecas: totals.totalPecas,
-      totalMetroLinear: String(totals.totalMetroLinear.toFixed(2)),
-      totalVolume: String(totals.totalVolume.toFixed(4)),
+      comissaoCalculada: resultadoComercial.comissaoCalculada,
+      taxasAdicionais,
+      subtotal: resultadoComercial.subtotal,
+      total: resultadoComercial.total,
+      totalPecas: resultadoComercial.totalPecas,
+      totalMetroLinear: resultadoComercial.totalMetroLinear,
+      totalVolume: resultadoComercial.totalVolume,
       observacoes: observacoes || undefined,
       vendedor: vendedor || undefined,
       dataValidade: dataValidade || undefined,
       dataVencimento,
       competencia,
-      itens: itens.map(({ madeiraId, bitolaId, produtoComercialId, madeiraNome, bitolaDescricao, espessura, largura, comprimento, quantidade, tipoComercializacao, unidadesPorComercializacao, precoM3, precoLinear, valorPeca, valorTotal, componentesPacote }) => ({ madeiraId, bitolaId, produtoComercialId, madeiraNome, bitolaDescricao, espessura, largura, comprimento, quantidade, tipoComercializacao, unidadesPorComercializacao, precoM3, precoLinear, valorPeca, valorTotal, componentesPacote })),
+      itens: itensComPrevia.map(({ madeiraId, bitolaId, produtoComercialId, madeiraNome, bitolaDescricao, espessura, largura, comprimento, quantidade, tipoComercializacao, unidadesPorComercializacao, precoM3, precoLinear, valorPeca, valorTotal, componentesPacote }) => ({ madeiraId, bitolaId, produtoComercialId, madeiraNome, bitolaDescricao, espessura, largura, comprimento, quantidade, tipoComercializacao, unidadesPorComercializacao, precoM3, precoLinear, valorPeca, valorTotal, componentesPacote })),
       aproveitamentos: aproveitamentosVenda,
-    }, {
-      onSuccess: () => { toast.success(estado === "enviado" ? "Venda enviada!" : "Venda salva!"); utils.orcamento.list.invalidate(); setLocation("/orcamentos"); },
-      onError: (err: any) => { salvandoRef.current = false; toast.error(err.message); },
-    });
+    };
+    const onSuccess = () => { toast.success(revisarId !== null ? "Revisão comercial salva; a venda continua aprovada." : estado === "enviado" ? "Venda enviada!" : "Venda salva!"); utils.orcamento.list.invalidate(); setLocation("/orcamentos"); };
+    const onError = (err: any) => { salvandoRef.current = false; toast.error(err.message); };
+    if (revisarId !== null) {
+      revisarInterna.mutate({ ...payload, id: revisarId, versaoComercialEsperada: Number(origemDuplicacao.data?.orcamento.versaoComercial ?? 1), motivo: motivoRevisao }, { onSuccess, onError });
+    } else {
+      create.mutate(payload, { onSuccess, onError });
+    }
   };
 
-  if (duplicarInvalido) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Não foi possível duplicar</h1><p className="mt-2 text-sm text-muted-foreground">O identificador da venda original é inválido.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
-  if (duplicarId !== null && origemDuplicacao.isLoading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando dados comerciais da venda…</div>;
-  if (duplicarId !== null && (origemDuplicacao.isError || (origemDuplicacao.isSuccess && !origemDuplicacao.data))) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Não foi possível carregar a venda</h1><p className="mt-2 text-sm text-muted-foreground">A venda não está disponível para esta empresa ou ocorreu uma falha de carregamento.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
+  if (duplicarInvalido || revisarInvalido) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Não foi possível abrir a operação</h1><p className="mt-2 text-sm text-muted-foreground">O identificador informado é inválido.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
+  if (origemId !== null && origemDuplicacao.isLoading) return <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando dados comerciais da venda…</div>;
+  if (origemId !== null && (origemDuplicacao.isError || (origemDuplicacao.isSuccess && !origemDuplicacao.data))) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Não foi possível carregar a venda</h1><p className="mt-2 text-sm text-muted-foreground">A venda não está disponível para esta empresa ou ocorreu uma falha de carregamento.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
+  if (revisarId !== null && origemDuplicacao.data && (origemDuplicacao.data.orcamento.tipoVenda !== "interna" || origemDuplicacao.data.orcamento.estado !== "aprovado" || origemDuplicacao.data.orcamento.entregue)) return <div className="mx-auto max-w-xl py-12 text-center"><h1 className="text-lg font-semibold">Revisão indisponível</h1><p className="mt-2 text-sm text-muted-foreground">Somente vendas internas aprovadas e ainda não retiradas podem ser revisadas.</p><Button className="mt-4" onClick={() => setLocation("/orcamentos")}>Voltar para vendas</Button></div>;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <Button variant="ghost" onClick={() => setLocation("/orcamentos")} className="mb-2 -ml-2"><ArrowLeft className="h-4 w-4 mr-1" />Voltar</Button>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{duplicarId !== null ? "Duplicar venda" : "Nova Venda"}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{duplicarId !== null ? "Revise e edite os dados comerciais. A cópia só será criada quando você salvar como rascunho." : "Registre a venda de madeira serrada e programe o recebimento"}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{revisarId !== null ? "Revisar venda interna" : duplicarId !== null ? "Duplicar venda" : "Nova Venda"}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{revisarId !== null ? "A alteração cria uma revisão auditável, atualiza reservas e ajusta somente saldos financeiros em aberto." : duplicarId !== null ? "Revise e edite os dados comerciais. A cópia só será criada quando você salvar como rascunho." : "Registre a venda de madeira serrada e programe o recebimento"}</p>
         </div>
       </div>
 
+      {revisarId !== null && <div className="space-y-2"><Label htmlFor="motivo-revisao">Motivo da revisão *</Label><Textarea id="motivo-revisao" value={motivoRevisao} onChange={(event) => setMotivoRevisao(event.target.value)} maxLength={4000} placeholder="Descreva o motivo comercial da alteração" /></div>}
       {duplicarId !== null && <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Esta é uma nova proposta independente. Nenhum orçamento foi criado ainda; aprovação, pagamento, entrega e histórico da origem não serão copiados.</div>}
       {duplicarId !== null && origemCarregada && (!dataVencimento || !competencia) && <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">A origem não possui todas as datas comerciais. Informe vencimento e competência antes de salvar.</div>}
       {duplicarId !== null && origemCarregada && clientes.isSuccess && !clientes.data?.some((cliente) => cliente.id === Number(clienteId)) && <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">O cliente original não está disponível na lista atual. Selecione um cliente válido antes de salvar.</div>}
@@ -397,6 +434,14 @@ export default function OrcamentoNovo() {
             <CardContent className="p-5">
               <h3 className="font-semibold text-sm mb-4">Dados da Venda</h3>
               <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tipo-venda">Tipo de venda</Label>
+                  <select id="tipo-venda" aria-label="Tipo de venda" value={tipoVenda} onChange={(event) => setTipoVenda(event.target.value as "externa" | "interna")} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="externa">Venda externa</option>
+                    <option value="interna">Venda interna</option>
+                  </select>
+                  {tipoVenda === "interna" && <p className="text-xs text-muted-foreground">Na aprovação, somente itens comercializados por m³ reservam estoque serrado. Unidade e pacote não movimentam estoque.</p>}
+                </div>
                 <div className="space-y-2">
                   <Label>Cliente *</Label>
                   <div className="flex gap-2">
@@ -596,7 +641,7 @@ export default function OrcamentoNovo() {
                 <Button type="button" variant="outline" onClick={adicionarAproveitamento}><Plus className="mr-1.5 h-4 w-4" />Adicionar</Button>
               </div>
               {aproveitamentosDisponiveis.length === 0 && <p className="mt-3 text-xs text-muted-foreground">Nenhum aproveitamento disponível no estoque neste momento.</p>}
-              {aproveitamentosVenda.length > 0 && <div className="mt-4 space-y-2">{aproveitamentosVenda.map((item, index) => <div key={`${item.madeiraNome}-${index}`} className="flex items-center justify-between rounded-md border border-amber-200 bg-white px-3 py-2"><div><p className="text-sm font-medium">{item.madeiraNome}</p><p className="text-xs text-muted-foreground">{formatMeasurement(item.volume)} m³ × {formatCurrency(item.precoM3)}/m³ = {formatCurrency(String(Number(item.volume.replace(",", ".")) * Number(item.precoM3.replace(",", "."))))}</p></div><Button type="button" aria-label={`Remover ${item.madeiraNome}`} variant="ghost" size="icon" className="text-destructive" onClick={() => setAproveitamentosVenda((atuais) => atuais.filter((_, atual) => atual !== index))}><Trash2 className="h-4 w-4" /></Button></div>)}</div>}
+              {aproveitamentosVenda.length > 0 && <div className="mt-4 space-y-2">{aproveitamentosVenda.map((item, index) => <div key={`${item.madeiraNome}-${index}`} className="flex items-center justify-between rounded-md border border-amber-200 bg-white px-3 py-2"><div><p className="text-sm font-medium">{item.madeiraNome}</p><p className="text-xs text-muted-foreground">{formatMeasurement(item.volume)} m³ × {formatCurrency(item.precoM3)}/m³ = {formatCurrency(totalsPreview?.aproveitamentos[index]?.valorTotal ?? "0.00")}</p></div><Button type="button" aria-label={`Remover ${item.madeiraNome}`} variant="ghost" size="icon" className="text-destructive" onClick={() => setAproveitamentosVenda((atuais) => atuais.filter((_, atual) => atual !== index))}><Trash2 className="h-4 w-4" /></Button></div>)}</div>}
             </CardContent>
           </Card>
 
@@ -606,7 +651,7 @@ export default function OrcamentoNovo() {
               <CardContent className="p-5">
                 <h3 className="font-semibold text-sm mb-4">Itens da Venda ({itens.length})</h3>
                 <div className="space-y-2">
-                  {itens.map((item, idx) => (
+                  {itensComPrevia.map((item, idx) => (
                     <div key={`${idx}-${item.tipoComercializacao}`} className="space-y-3 rounded-lg border border-border/50 bg-muted/30 p-3">
                         <div className="flex items-center gap-2">
                         <div className="flex-1 space-y-1"><Label htmlFor={`item-nome-${idx}`}>Produto / madeira</Label><Input id={`item-nome-${idx}`} value={item.madeiraNome} onChange={(e) => atualizarItem(idx, { madeiraNome: e.target.value, madeiraId: null, bitolaId: null, produtoComercialId: null })} /></div>
@@ -640,7 +685,7 @@ export default function OrcamentoNovo() {
                           <Button type="button" variant="ghost" size="icon" aria-label={`Excluir componente ${componenteIdx + 1} de ${item.madeiraNome}`} className="text-destructive" onClick={() => removerComponenteItem(idx, componenteIdx)}><Trash2 className="h-4 w-4" /></Button>
                         </div>)}
                       </div>}
-                      <p className="text-xs text-muted-foreground">{item.quantidade} {item.tipoComercializacao === "unidade" ? "un." : item.tipoComercializacao === "pacote" ? "pacote(s)" : "peças"} × {formatCurrency(item.valorPeca)} = <strong>{formatCurrency(item.valorTotal)}</strong> · {rotulosTipoComercializacaoVenda[item.tipoComercializacao]}</p>
+                      <p className="text-xs text-muted-foreground">{previaCorrigida.erro ? "Prévia da linha indisponível" : <>{item.quantidade} {item.tipoComercializacao === "unidade" ? "un." : item.tipoComercializacao === "pacote" ? "pacote(s)" : "peças"} × {formatCurrency(item.valorPeca)} = <strong>{formatCurrency(item.valorTotal)}</strong></>} · {rotulosTipoComercializacaoVenda[item.tipoComercializacao]}</p>
                     </div>
                   ))}
                 </div>
@@ -663,9 +708,13 @@ export default function OrcamentoNovo() {
           <Card className="border border-border/50 shadow-sm sticky top-6">
             <CardContent className="p-5 space-y-4">
               <h3 className="font-semibold text-sm">Resumo da Venda</h3>
+              <div role="note" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+                Prévia calculada pelo mesmo motor comercial usado pelo servidor. O valor final é recalculado e validado no backend ao salvar.
+              </div>
+              {previaCorrigida.erro && <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">Não é possível calcular a prévia: {previaCorrigida.erro}. Os dados digitados foram preservados; revise os valores.</div>}
               <Separator />
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal bruto</span><span className="font-medium">{formatCurrency(String(totals.subtotal))}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal bruto</span><span className="font-medium">{formatCurrency(totalsPreview?.subtotal ?? "0.00")}</span></div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm text-muted-foreground">Desconto</Label>
@@ -677,42 +726,42 @@ export default function OrcamentoNovo() {
                       <div className="space-y-1"><Label className="text-xs text-muted-foreground">R$/tonelada</Label><Input aria-label="Frete por tonelada" type="number" value={frete} onChange={(e) => setFrete(e.target.value)} placeholder="0,00" className="h-8 bg-white text-right" /></div>
                       <div className="space-y-1"><Label className="text-xs text-muted-foreground">Peso (t)</Label><Input aria-label="Peso da carga em toneladas" type="number" value={pesoCargaToneladas} onChange={(e) => setPesoCargaToneladas(e.target.value)} placeholder="0,000" className="h-8 bg-white text-right" /></div>
                     </div>
-                    <div className="flex justify-between text-xs"><span>Abatimento de frete</span><span className="font-semibold text-amber-800">− {formatCurrency(String(totals.abatimentoFrete))}</span></div>
+                    <div className="flex justify-between text-xs"><span>Abatimento de frete</span><span className="font-semibold text-amber-800">− {formatCurrency(totalsPreview?.abatimentoFrete ?? "0.00")}</span></div>
                   </div>
-                  <div className="flex justify-between text-sm rounded bg-muted/50 px-2 py-1.5"><span className="text-muted-foreground">Base após frete</span><span className="font-semibold">{formatCurrency(String(totals.baseAposFrete))}</span></div>
+                  <div className="flex justify-between text-sm rounded bg-muted/50 px-2 py-1.5"><span className="text-muted-foreground">Base após frete</span><span className="font-semibold">{formatCurrency(totalsPreview?.baseAposFrete ?? "0.00")}</span></div>
                   <div className="rounded-md border border-border/70 p-3 space-y-2">
                     <div className="flex items-center justify-between"><Label className="text-xs font-semibold">Comissão do vendedor</Label><select aria-label="Tipo de comissão" value={comissaoTipo} onChange={(e) => setComissaoTipo(e.target.value as "percentual" | "fixo")} className="h-7 rounded border bg-white px-1 text-xs"><option value="percentual">%</option><option value="fixo">R$ fixo</option></select></div>
-                    <div className="flex gap-2"><Input aria-label="Valor da comissão" type="number" value={comissaoValor} onChange={(e) => setComissaoValor(e.target.value)} placeholder={comissaoTipo === "percentual" ? "0,00 %" : "0,00"} className="h-8 bg-white text-right" /><span className="flex items-center whitespace-nowrap text-xs font-medium">− {formatCurrency(String(totals.comissaoCalculada))}</span></div>
+                    <div className="flex gap-2"><Input aria-label="Valor da comissão" type="number" value={comissaoValor} onChange={(e) => setComissaoValor(e.target.value)} placeholder={comissaoTipo === "percentual" ? "0,00 %" : "0,00"} className="h-8 bg-white text-right" /><span className="flex items-center whitespace-nowrap text-xs font-medium">− {formatCurrency(totalsPreview?.comissaoCalculada ?? "0.00")}</span></div>
                   </div>
                   <div className="rounded-md border border-border/70 p-3 space-y-3">
                     <div className="flex items-center justify-between gap-3"><div><Label className="text-xs font-semibold">Taxas adicionais</Label><p className="mt-0.5 text-[11px] text-muted-foreground">São cobradas do cliente e somadas ao valor final.</p></div><Button type="button" variant="outline" size="sm" onClick={adicionarTaxaAdicional} className="h-7 px-2 text-xs"><Plus className="mr-1 h-3.5 w-3.5" />Adicionar taxa</Button></div>
                     {taxasAdicionais.length === 0 ? <p className="text-xs text-muted-foreground">Nenhuma taxa adicional aplicada.</p> : taxasAdicionais.map((taxa, indice) => (
                       <div key={indice} className="rounded border border-dashed border-border/80 p-2 space-y-2">
                         <div className="flex items-center gap-2"><Input aria-label={`Descrição da taxa ${indice + 1}`} value={taxa.descricao} onChange={(e) => atualizarTaxaAdicional(indice, "descricao", e.target.value)} placeholder="Ex.: ICMS do frete" className="h-8 bg-white text-sm" /><Button type="button" variant="ghost" size="icon" onClick={() => removerTaxaAdicional(indice)} aria-label={`Remover taxa ${indice + 1}`} className="h-8 w-8 text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button></div>
-                        <div className="flex gap-2"><select aria-label={`Tipo de taxa ${indice + 1}`} value={taxa.tipo} onChange={(e) => atualizarTaxaAdicional(indice, "tipo", e.target.value)} className="h-8 rounded border bg-white px-2 text-xs"><option value="percentual">%</option><option value="fixo">R$ fixo</option></select><Input aria-label={`Valor da taxa ${indice + 1}`} type="number" value={taxa.valor} onChange={(e) => atualizarTaxaAdicional(indice, "valor", e.target.value)} placeholder={taxa.tipo === "percentual" ? "0,00 %" : "0,00"} className="h-8 bg-white text-right" /><span className="flex items-center whitespace-nowrap text-xs font-medium text-emerald-700 dark:text-emerald-300">+ {formatCurrency(String(totals.taxasCalculadas[indice]?.calculado ?? 0))}</span></div>
+                        <div className="flex gap-2"><select aria-label={`Tipo de taxa ${indice + 1}`} value={taxa.tipo} onChange={(e) => atualizarTaxaAdicional(indice, "tipo", e.target.value)} className="h-8 rounded border bg-white px-2 text-xs"><option value="percentual">%</option><option value="fixo">R$ fixo</option></select><Input aria-label={`Valor da taxa ${indice + 1}`} type="number" value={taxa.valor} onChange={(e) => atualizarTaxaAdicional(indice, "valor", e.target.value)} placeholder={taxa.tipo === "percentual" ? "0,00 %" : "0,00"} className="h-8 bg-white text-right" /><span className="flex items-center whitespace-nowrap text-xs font-medium text-emerald-700 dark:text-emerald-300">+ {formatCurrency(totalsPreview?.taxasCalculadas[indice]?.calculado ?? "0.00")}</span></div>
                       </div>
                     ))}
-                    {taxasAdicionais.length > 0 && <div className="flex justify-between text-xs"><span>Total das taxas</span><span className="font-semibold text-emerald-700 dark:text-emerald-300">+ {formatCurrency(String(totals.taxaCalculada))}</span></div>}
+                    {taxasAdicionais.length > 0 && <div className="flex justify-between text-xs"><span>Total das taxas</span><span className="font-semibold text-emerald-700 dark:text-emerald-300">+ {formatCurrency(totalsPreview?.taxaCalculada ?? "0.00")}</span></div>}
                   </div>
                 </div>
                 <Separator />
-                <div className="flex justify-between text-lg font-bold"><span>Valor final do pedido</span><span className="text-primary">{formatCurrency(String(totals.total))}</span></div>
+                <div className="flex justify-between text-lg font-bold"><span>Valor final da prévia</span><span className="text-primary">{formatCurrency(totalsPreview?.total ?? "0.00")}</span></div>
               </div>
               <Separator />
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div><p className="text-xs text-muted-foreground">Itens</p><p className="font-semibold text-sm">{totals.totalPecas}</p></div>
-                <div><p className="text-xs text-muted-foreground">M. Linear</p><p className="font-semibold text-sm">{formatMeasurement(totals.totalMetroLinear)} m</p></div>
-                <div><p className="text-xs text-muted-foreground">Volume</p><p className="font-semibold text-sm">{formatMeasurement(totals.totalVolume)} m³</p></div>
+                <div><p className="text-xs text-muted-foreground">Itens</p><p className="font-semibold text-sm">{totalsPreview?.totalPecas ?? 0}</p></div>
+                <div><p className="text-xs text-muted-foreground">M. Linear</p><p className="font-semibold text-sm">{formatMeasurement(totalsPreview?.totalMetroLinear ?? "0.0000")} m</p></div>
+                <div><p className="text-xs text-muted-foreground">Volume</p><p className="font-semibold text-sm">{formatMeasurement(totalsPreview?.totalVolume ?? "0.000000")} m³</p></div>
               </div>
               <Separator />
               <div className="space-y-2">
                 <div className="space-y-2"><Label className="text-sm">Observações</Label><Textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder="Notas adicionais" className="bg-white text-sm" rows={3} /></div>
               </div>
               <div className="flex gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => handleSave("rascunho")} disabled={!clienteId || (itens.length === 0 && aproveitamentosVenda.length === 0) || create.isPending} className="flex-1">
-                  {create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}{duplicarId !== null ? "Salvar cópia como rascunho" : "Salvar venda"}
+                <Button type="button" variant="outline" onClick={() => handleSave("rascunho")} disabled={!clienteId || (itens.length === 0 && aproveitamentosVenda.length === 0) || Boolean(previaCorrigida.erro) || create.isPending || revisarInterna.isPending || (revisarId !== null && motivoRevisao.trim().length < 3)} className="flex-1">
+                  {create.isPending || revisarInterna.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}{revisarId !== null ? "Salvar revisão" : duplicarId !== null ? "Salvar cópia como rascunho" : "Salvar venda"}
                 </Button>
-                {duplicarId === null && <Button type="button" onClick={() => handleSave("enviado")} disabled={!clienteId || itens.length === 0 || create.isPending} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {duplicarId === null && revisarId === null && <Button type="button" onClick={() => handleSave("enviado")} disabled={!clienteId || itens.length === 0 || Boolean(previaCorrigida.erro) || create.isPending || revisarInterna.isPending} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
                   <Send className="h-4 w-4 mr-2" />Enviar venda
                 </Button>}
               </div>

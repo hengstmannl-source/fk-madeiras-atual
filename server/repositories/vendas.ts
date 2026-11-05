@@ -5,9 +5,10 @@ import {
   empresas, credenciaisUsuarios, convitesEmpresa, recuperacoesSenha,
   fornecedores, categoriasFinanceiras, contasFinanceiras, titulosFinanceiros, sequenciasVendas, sequenciasDocumentos,
   baixasFinanceiras, chequesFinanceiros, recorrenciasFinanceiras, configuracoesFinanceiras, alertasFinanceiros, extratosBancarios, movimentosExtratoBancario, anexosFinanceiros,
+  revisoesVendas, ciclosEntrega, reservasEstoqueVenda, ajustesFinanceirosVenda,
   plaquetas, conferenciasVariacaoPlaquetas, romaneiosCargaToras, romaneiosProducao, itensRomaneioToras, itensRomaneioProducao, aproveitamentosRomaneioProducao, aproveitamentosOrcamento, serragensTerceiros, itensSerragemToras, itensSerragemPecas, retiradasSerragemTerceiros, itensRetiradaSerragemTerceiros, lotesPecasSerradas, movimentacoesPlaquetas, movimentacoesEstoqueSerrado, notasDiesel, abastecimentosDiesel,
   type InsertMadeira, type InsertBitola, type InsertCliente,
-  type InsertOrcamento, type InsertItemOrcamento, type InsertComponentePacoteOrcamento, type InsertProdutoComercial, type InsertComponenteProdutoComercial, type InsertModeloMedidaVenda, type InsertFornecedor,
+  type InsertOrcamento, type InsertComponentePacoteOrcamento, type InsertProdutoComercial, type InsertComponenteProdutoComercial, type InsertModeloMedidaVenda, type InsertFornecedor,
   type InsertCategoriaFinanceira, type InsertContaFinanceira,
   type InsertTituloFinanceiro, type InsertBaixaFinanceira, type InsertChequeFinanceiro, type InsertRecorrenciaFinanceira,
 } from "../../drizzle/schema";
@@ -25,11 +26,13 @@ import { calcularCustoAbastecimentoDiesel, calcularResumoTanqueDiesel, validarEx
 import { criarModeloCsvExtratoBancario, prepararImportacaoExtrato } from "../conciliacao.intercambio";
 import { sugerirConciliacoes } from "../conciliacao.logic";
 import { numerarDuplicidadesPlaquetas } from "../../shared/plaquetas";
+import type { PersistenciaNovaOperacaoComercial } from "../comercial.persistence";
+import { planejarAjusteFinanceiroRevisao, planejarReservasVendaInterna, valorMonetarioEmCentavos } from "../vendas-internas.logic";
 
 import { getDb } from "./core";
 import { getEmpresaUnica } from "./identidade";
 import { getInsertedId } from "./catalogo";
-import { criarTituloReceberDeOrcamento, getOrCreateContaFinanceiraPadrao, registrarBaixaFinanceira } from "./financeiro";
+import { criarTituloReceberDeOrcamento, getOrCreateCategoriaReceitaVendas, garantirTituloFinanceiroComChave, getOrCreateContaFinanceiraPadrao, registrarBaixaFinanceira } from "./financeiro";
 import { normalizarFreteCarga } from "./estoque";
 import { formatarNumeroDocumentoPadronizado, reservarProximoNumeroDocumento } from "./documentos";
 
@@ -435,89 +438,252 @@ async function validarAlteracaoOrcamento(id: number, confirmacaoDupla = false, d
   return orcamento;
 }
 
-export async function createOrcamento(
-  data: InsertOrcamento,
-  itens: Array<Partial<InsertItemOrcamento> & { componentesPacote?: ComponenteComercialInput[] }>,
-  aproveitamentos: Array<{ madeiraNome: string; volume: string; precoM3: string }> = [],
-  taxasAdicionais: Array<{ descricao: string; tipo: "percentual" | "fixo"; valor: string; calculado: string; ordem?: number }> = [],
+/** Persiste uma nova operação preparada pelo motor comercial, sem recalcular valores. */
+export async function createOrcamentoComercialCalculado(
+  preparada: PersistenciaNovaOperacaoComercial,
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
   return db.transaction(async (tx) => {
-    const result = await tx.insert(orcamentos).values(data);
-    const orcId = result[0].insertId;
-    if (itens.length > 0) {
-      const itensWithOrcId: InsertItemOrcamento[] = itens.map((i): InsertItemOrcamento => ({
-        empresaId: data.empresaId,
-        orcamentoId: orcId,
-        madeiraId: i.madeiraId ?? null,
-        bitolaId: i.bitolaId!,
-        madeiraNome: i.madeiraNome!,
-        bitolaDescricao: i.bitolaDescricao!,
-        espessura: i.espessura!,
-        largura: i.largura!,
-        comprimento: i.comprimento!,
-        quantidade: i.quantidade!,
-        produtoComercialId: i.produtoComercialId ?? null,
-        tipoComercializacao: i.tipoComercializacao ?? "metro_cubico",
-        unidadesPorComercializacao: i.unidadesPorComercializacao ?? 1,
-        precoM3: i.precoM3!,
-        precoLinear: i.precoLinear!,
-        valorPeca: i.valorPeca!,
-        valorTotal: i.valorTotal!,
-      }));
-      for (let indice = 0; indice < itensWithOrcId.length; indice += 1) {
-        const item = itensWithOrcId[indice];
-        const resultadoItem = await tx.insert(itensOrcamento).values(item);
-        const componentes = itens[indice].componentesPacote ?? [];
-        if (!componentes.length) continue;
-        await tx.insert(componentesPacoteOrcamento).values(componentes.map((componente): InsertComponentePacoteOrcamento => ({
-          empresaId: data.empresaId,
-          itemOrcamentoId: Number(resultadoItem[0].insertId),
-          descricao: componente.descricao,
-          madeiraNome: componente.madeiraNome ?? null,
-          espessura: componente.espessura ?? null,
-          largura: componente.largura ?? null,
-          comprimento: componente.comprimento ?? null,
-          quantidadePorPacote: componente.quantidade,
-        })));
+    const cabecalho = preparada.cabecalho;
+    const empresaId = cabecalho.empresaId;
+
+    const cliente = await tx.select({ id: clientes.id }).from(clientes).where(and(
+      eq(clientes.id, cabecalho.clienteId),
+      eq(clientes.empresaId, empresaId),
+    )).limit(1);
+    if (!cliente[0]) throw new Error("Cliente inválido para a empresa ativa");
+
+    const madeiraIds = Array.from(new Set(preparada.itens.flatMap((item) => item.madeiraId == null ? [] : [item.madeiraId])));
+    const bitolaIds = Array.from(new Set(preparada.itens.flatMap((item) => item.bitolaId == null ? [] : [item.bitolaId])));
+    const produtoIds = Array.from(new Set(preparada.itens.flatMap((item) => item.produtoComercialId == null ? [] : [item.produtoComercialId])));
+
+    const [madeirasEncontradas, bitolasEncontradas, produtosEncontrados] = await Promise.all([
+      madeiraIds.length ? tx.select({ id: madeiras.id }).from(madeiras).where(and(eq(madeiras.empresaId, empresaId), inArray(madeiras.id, madeiraIds))) : [],
+      bitolaIds.length ? tx.select({ id: bitolas.id, madeiraId: bitolas.madeiraId }).from(bitolas).where(and(eq(bitolas.empresaId, empresaId), inArray(bitolas.id, bitolaIds))) : [],
+      produtoIds.length ? tx.select({ id: produtosComerciais.id, tipoComercializacao: produtosComerciais.tipoComercializacao }).from(produtosComerciais).where(and(eq(produtosComerciais.empresaId, empresaId), inArray(produtosComerciais.id, produtoIds))) : [],
+    ]);
+    if (madeirasEncontradas.length !== madeiraIds.length) throw new Error("Referência de madeira inválida para a empresa ativa");
+    if (bitolasEncontradas.length !== bitolaIds.length) throw new Error("Referência de bitola inválida para a empresa ativa");
+    if (produtosEncontrados.length !== produtoIds.length) throw new Error("Referência de produto comercial inválida para a empresa ativa");
+
+    const bitolasPorId = new Map(bitolasEncontradas.map((bitola) => [bitola.id, bitola]));
+    for (const item of preparada.itens) {
+      if (item.bitolaId != null) {
+        const bitola = bitolasPorId.get(item.bitolaId)!;
+        if (item.madeiraId != null && bitola.madeiraId !== item.madeiraId) {
+          throw new Error("A bitola não corresponde à madeira informada");
+        }
+      }
+      if (item.produtoComercialId != null) {
+        const produto = produtosEncontrados.find(({ id }) => id === item.produtoComercialId);
+        if (produto?.tipoComercializacao !== item.tipoComercializacao) {
+          throw new Error("O produto comercial não corresponde ao tipo de comercialização informado");
+        }
       }
     }
-    if (aproveitamentos.length > 0) {
-      await tx.insert(aproveitamentosOrcamento).values(aproveitamentos.map((item) => {
-        const volume = Number(item.volume);
-        const precoM3 = Number(item.precoM3);
-        return {
-          empresaId: data.empresaId,
-          orcamentoId: orcId,
-          madeiraNome: item.madeiraNome,
-          volume: volume.toFixed(3),
-          precoM3: precoM3.toFixed(2),
-          valorTotal: (volume * precoM3).toFixed(2),
-        };
-      }));
+
+    const inserted = await tx.insert(orcamentos).values(cabecalho);
+    const orcamentoId = Number(inserted[0].insertId);
+    if (!Number.isSafeInteger(orcamentoId) || orcamentoId <= 0) throw new Error("Não foi possível identificar o novo orçamento");
+
+    for (const item of preparada.itens) {
+      const { componentesPacote, ...dadosItem } = item;
+      const insertedItem = await tx.insert(itensOrcamento).values({
+        ...dadosItem,
+        empresaId,
+        orcamentoId,
+      });
+      const itemOrcamentoId = Number(insertedItem[0].insertId);
+      if (!Number.isSafeInteger(itemOrcamentoId) || itemOrcamentoId <= 0) throw new Error("Não foi possível identificar o item do orçamento");
+      if (componentesPacote.length) {
+        await tx.insert(componentesPacoteOrcamento).values(componentesPacote.map((componente) => ({
+          ...componente,
+          empresaId,
+          itemOrcamentoId,
+        } satisfies InsertComponentePacoteOrcamento)));
+      }
     }
-    if (taxasAdicionais.length > 0) {
-      await tx.insert(taxasAdicionaisOrcamento).values(taxasAdicionais.map((taxa, indice) => ({
-        empresaId: data.empresaId,
-        orcamentoId: orcId,
-        descricao: taxa.descricao.trim(),
-        tipo: taxa.tipo,
-        valor: Number(taxa.valor.replace(",", ".")).toFixed(4),
-        calculado: Number(taxa.calculado.replace(",", ".")).toFixed(2),
-        ordem: taxa.ordem ?? indice,
+
+    if (preparada.aproveitamentos.length) {
+      await tx.insert(aproveitamentosOrcamento).values(preparada.aproveitamentos.map((item) => ({
+        ...item,
+        empresaId,
+        orcamentoId,
       })));
     }
-    if (data.criadoPor) {
+    if (preparada.taxasAdicionais.length) {
+      await tx.insert(taxasAdicionaisOrcamento).values(preparada.taxasAdicionais.map((taxa) => ({
+        ...taxa,
+        empresaId,
+        orcamentoId,
+      })));
+    }
+    if (cabecalho.criadoPor) {
       await tx.insert(historicoAlteracoes).values({
-        empresaId: data.empresaId,
-        orcamentoId: orcId,
-        usuarioId: data.criadoPor,
+        empresaId,
+        orcamentoId,
+        usuarioId: cabecalho.criadoPor,
         tipo: "criacao" as any,
-        detalhes: JSON.stringify({ numero: data.numero, estado: data.estado }),
+        detalhes: JSON.stringify({ numero: cabecalho.numero, estado: cabecalho.estado }),
       });
     }
-    return { id: orcId };
+    return { id: orcamentoId };
+  });
+}
+
+function criarSnapshotVenda(comercial: any, itens: any[], componentes: any[], taxas: any[], aproveitamentos: any[]) {
+  const componentesPorItem = new Map<number, any[]>();
+  for (const componente of componentes) componentesPorItem.set(componente.itemOrcamentoId, [...(componentesPorItem.get(componente.itemOrcamentoId) ?? []), componente]);
+  return {
+    cabecalho: {
+      tipoVenda: comercial.tipoVenda, clienteId: comercial.clienteId, desconto: comercial.desconto,
+      frete: comercial.frete, fretePorTonelada: comercial.fretePorTonelada, pesoCargaToneladas: comercial.pesoCargaToneladas,
+      abatimentoFrete: comercial.abatimentoFrete, baseAposFrete: comercial.baseAposFrete,
+      comissaoTipo: comercial.comissaoTipo, comissaoValor: comercial.comissaoValor, taxaDescricao: comercial.taxaDescricao,
+      taxaTipo: comercial.taxaTipo, taxaValor: comercial.taxaValor, taxaCalculada: comercial.taxaCalculada,
+      subtotal: comercial.subtotal, total: comercial.total, totalPecas: comercial.totalPecas,
+      totalMetroLinear: comercial.totalMetroLinear, totalVolume: comercial.totalVolume,
+    },
+    itens: itens.map((item) => ({ dados: item, componentesPacote: item.componentesPacote ?? componentesPorItem.get(item.id) ?? [] })),
+    taxasAdicionais: taxas,
+    aproveitamentos,
+  };
+}
+
+/** Atualiza somente o snapshot comercial de venda interna aprovada, mantendo títulos e baixas auditáveis. */
+export async function revisarVendaInterna(orcamentoId: number, userId: number, motivo: string, preparada: PersistenciaNovaOperacaoComercial, versaoComercialEsperada: number) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (motivo.trim().length < 3) throw new Error("Informe o motivo da revisão comercial");
+  return db.transaction(async (tx: any) => {
+    const venda = (await tx.select().from(orcamentos).where(and(eq(orcamentos.id, orcamentoId), eq(orcamentos.empresaId, empresaId))).for("update").limit(1))[0];
+    if (!venda || venda.tipoVenda !== "interna") throw new Error("Venda interna não encontrada");
+    if ((venda.versaoComercial ?? 1) !== versaoComercialEsperada) throw new Error("A venda foi alterada por outra operação. Atualize os dados antes de revisar");
+    if (venda.estado !== "aprovado") throw new Error("Somente venda interna aprovada pode ser revisada");
+    if (venda.entregue) throw new Error("Não é possível revisar uma venda após a retirada; estorne primeiro");
+    if (venda.clienteId !== preparada.cabecalho.clienteId) throw new Error("O cliente não pode ser alterado após a aprovação da venda");
+    const madeiraIds = Array.from(new Set(preparada.itens.flatMap((item) => item.madeiraId == null ? [] : [item.madeiraId])));
+    const bitolaIds = Array.from(new Set(preparada.itens.flatMap((item) => item.bitolaId == null ? [] : [item.bitolaId])));
+    const produtoIds = Array.from(new Set(preparada.itens.flatMap((item) => item.produtoComercialId == null ? [] : [item.produtoComercialId])));
+    const [madeirasEncontradas, bitolasEncontradas, produtosEncontrados] = await Promise.all([
+      madeiraIds.length ? tx.select({ id: madeiras.id }).from(madeiras).where(and(eq(madeiras.empresaId, empresaId), inArray(madeiras.id, madeiraIds))) : [],
+      bitolaIds.length ? tx.select({ id: bitolas.id, madeiraId: bitolas.madeiraId }).from(bitolas).where(and(eq(bitolas.empresaId, empresaId), inArray(bitolas.id, bitolaIds))) : [],
+      produtoIds.length ? tx.select({ id: produtosComerciais.id, tipoComercializacao: produtosComerciais.tipoComercializacao }).from(produtosComerciais).where(and(eq(produtosComerciais.empresaId, empresaId), inArray(produtosComerciais.id, produtoIds))) : [],
+    ]);
+    if (madeirasEncontradas.length !== madeiraIds.length || bitolasEncontradas.length !== bitolaIds.length || produtosEncontrados.length !== produtoIds.length) {
+      throw new Error("A revisão contém referências comerciais inválidas para a empresa ativa");
+    }
+    const bitolasPorId = new Map(bitolasEncontradas.map((bitola: any) => [bitola.id, bitola]));
+    for (const item of preparada.itens) {
+      if (item.bitolaId != null) {
+        const bitola = bitolasPorId.get(item.bitolaId) as { madeiraId: number } | undefined;
+        if (!bitola || (item.madeiraId != null && bitola.madeiraId !== item.madeiraId)) throw new Error("A bitola não corresponde à madeira informada");
+      }
+      if (item.produtoComercialId != null) {
+        const produto = produtosEncontrados.find((row: any) => row.id === item.produtoComercialId);
+        if (produto?.tipoComercializacao !== item.tipoComercializacao) throw new Error("O produto comercial não corresponde ao tipo de comercialização informado");
+      }
+    }
+
+    const ciclos = await tx.select({ id: ciclosEntrega.id }).from(ciclosEntrega).where(and(eq(ciclosEntrega.empresaId, empresaId), eq(ciclosEntrega.orcamentoId, orcamentoId))).limit(1);
+    if (ciclos.length) throw new Error("Venda com histórico de retirada não pode ser revisada; preserve o ciclo operacional");
+
+    const titulos = await tx.select().from(titulosFinanceiros).where(and(eq(titulosFinanceiros.empresaId, empresaId), eq(titulosFinanceiros.orcamentoId, orcamentoId), eq(titulosFinanceiros.origem, "orcamento"))).for("update");
+    const tituloIds = titulos.map((titulo: any) => titulo.id);
+    const baixas = tituloIds.length ? await tx.select().from(baixasFinanceiras).where(and(eq(baixasFinanceiras.empresaId, empresaId), inArray(baixasFinanceiras.tituloId, tituloIds))) : [];
+    const valoresPagos = new Map<number, bigint>();
+    for (const baixa of baixas) if (!baixa.estornada) {
+      const valor = valorMonetarioEmCentavos(baixa.valor, "Valor de baixa financeira");
+      valoresPagos.set(baixa.tituloId, (valoresPagos.get(baixa.tituloId) ?? BigInt(0)) + valor);
+    }
+    if (titulos.some((titulo: any) => Number(titulo.desconto ?? 0) !== 0 || Number(titulo.juros ?? 0) !== 0)) {
+      throw new Error("A venda possui descontos ou juros financeiros individualizados; regularize esses títulos antes da revisão");
+    }
+    if (titulos.some((titulo: any) => titulo.estado === "cancelado" && (valoresPagos.get(titulo.id) ?? BigInt(0)) > BigInt(0))) {
+      throw new Error("Existe título cancelado com recebimento não estornado; regularize o histórico financeiro antes da revisão");
+    }
+    const titulosAtivos = titulos.filter((titulo: any) => titulo.estado !== "cancelado");
+    const totalComercialNovo = preparada.cabecalho.total;
+    if (typeof totalComercialNovo !== "string") throw new Error("O cálculo preparado não contém o total comercial da revisão");
+    const planoFinanceiro = planejarAjusteFinanceiroRevisao({
+      totalNovo: totalComercialNovo,
+      titulos: titulosAtivos.map((titulo: any, index: number) => {
+        const centavosPagos = valoresPagos.get(titulo.id) ?? BigInt(0);
+        const parteInteira = centavosPagos / BigInt(100);
+        const parteDecimal = String(centavosPagos % BigInt(100)).padStart(2, "0");
+        return { id: titulo.id, valorDevido: titulo.valorOriginal, valorPago: `${parteInteira}.${parteDecimal}`, ordem: titulo.numeroParcela ?? index + 1 };
+      }),
+    });
+
+    const [itensAntigos, taxasAntigas, aproveitamentosAntigos] = await Promise.all([
+      tx.select().from(itensOrcamento).where(and(eq(itensOrcamento.empresaId, empresaId), eq(itensOrcamento.orcamentoId, orcamentoId))),
+      tx.select().from(taxasAdicionaisOrcamento).where(and(eq(taxasAdicionaisOrcamento.empresaId, empresaId), eq(taxasAdicionaisOrcamento.orcamentoId, orcamentoId))),
+      tx.select().from(aproveitamentosOrcamento).where(and(eq(aproveitamentosOrcamento.empresaId, empresaId), eq(aproveitamentosOrcamento.orcamentoId, orcamentoId))),
+    ]);
+    const idsItensAntigos = itensAntigos.map((item: any) => item.id);
+    const componentesAntigos = idsItensAntigos.length ? await tx.select().from(componentesPacoteOrcamento).where(and(eq(componentesPacoteOrcamento.empresaId, empresaId), inArray(componentesPacoteOrcamento.itemOrcamentoId, idsItensAntigos))) : [];
+    const snapshotAnterior = criarSnapshotVenda(venda, itensAntigos, componentesAntigos, taxasAntigas, aproveitamentosAntigos);
+    const versaoAnterior = venda.versaoComercial ?? 1;
+    const versaoNova = versaoAnterior + 1;
+    const revisaoResult = await tx.insert(revisoesVendas).values({
+      empresaId, orcamentoId, versaoAnterior, versaoNova, usuarioId: userId, motivo: motivo.trim(),
+      totalAnterior: venda.total, totalNovo: preparada.cabecalho.total,
+      snapshotAnterior, snapshotNovo: criarSnapshotVenda(preparada.cabecalho, preparada.itens, preparada.itens.flatMap((item: any) => item.componentesPacote), preparada.taxasAdicionais, preparada.aproveitamentos),
+    });
+    const revisaoId = Number(revisaoResult[0].insertId);
+    const agora = new Date();
+    for (const ajuste of planoFinanceiro.novosValores) {
+      const titulo = titulosAtivos.find((item: any) => item.id === ajuste.tituloId);
+      if (!titulo) throw new Error("Título financeiro da revisão não encontrado");
+      const novoEstado = calcularEstadoTitulo({ valorOriginal: ajuste.novoValorDevido, dataVencimento: titulo.dataVencimento, valorBaixado: Number(valoresPagos.get(titulo.id) ?? BigInt(0)) / 100, cancelado: false });
+      await tx.update(titulosFinanceiros).set({ valorOriginal: ajuste.novoValorDevido, estado: novoEstado })
+        .where(and(eq(titulosFinanceiros.id, titulo.id), eq(titulosFinanceiros.empresaId, empresaId)));
+      await tx.insert(ajustesFinanceirosVenda).values({ empresaId, orcamentoId, revisaoVendaId: revisaoId, tituloFinanceiroId: titulo.id, valorAjuste: ajuste.valorAjuste, criadoPor: userId });
+    }
+    if (valorMonetarioEmCentavos(planoFinanceiro.delta, "Ajuste da revisão") > BigInt(0)) {
+      const categoriaId = await getOrCreateCategoriaReceitaVendas(userId, tx);
+      const recebido = await garantirTituloFinanceiroComChave({
+        database: tx, tipo: "receber", origem: "orcamento", chaveIdempotencia: `FIN-REVISAO-${revisaoId}`,
+        descricao: `Ajuste da revisão ${versaoNova} da venda ${venda.numero ?? venda.id}`, clienteId: venda.clienteId,
+        orcamentoId, categoriaId, centroCustoId: venda.centroCustoId ?? null, valorOriginal: planoFinanceiro.delta,
+        dataEmissao: agora, dataVencimento: venda.dataVencimento ?? agora, competencia: venda.competencia, criadoPor: userId,
+      });
+      await tx.insert(ajustesFinanceirosVenda).values({ empresaId, orcamentoId, revisaoVendaId: revisaoId, tituloFinanceiroId: recebido.id, valorAjuste: planoFinanceiro.delta, criadoPor: userId });
+    }
+
+    await tx.update(reservasEstoqueVenda).set({ estado: "liberada", encerradaEm: agora, encerradaPor: userId }).where(and(
+      eq(reservasEstoqueVenda.empresaId, empresaId), eq(reservasEstoqueVenda.orcamentoId, orcamentoId), eq(reservasEstoqueVenda.estado, "reservada"),
+    ));
+    if (idsItensAntigos.length) {
+      await tx.delete(componentesPacoteOrcamento).where(and(eq(componentesPacoteOrcamento.empresaId, empresaId), inArray(componentesPacoteOrcamento.itemOrcamentoId, idsItensAntigos)));
+      await tx.delete(itensOrcamento).where(and(eq(itensOrcamento.empresaId, empresaId), eq(itensOrcamento.orcamentoId, orcamentoId)));
+    }
+    await tx.delete(taxasAdicionaisOrcamento).where(and(eq(taxasAdicionaisOrcamento.empresaId, empresaId), eq(taxasAdicionaisOrcamento.orcamentoId, orcamentoId)));
+    await tx.delete(aproveitamentosOrcamento).where(and(eq(aproveitamentosOrcamento.empresaId, empresaId), eq(aproveitamentosOrcamento.orcamentoId, orcamentoId)));
+    for (const item of preparada.itens) {
+      const { componentesPacote, ...dadosItem } = item;
+      const inserted = await tx.insert(itensOrcamento).values({ ...dadosItem, empresaId, orcamentoId });
+      const itemId = Number(inserted[0].insertId);
+      if (componentesPacote.length) await tx.insert(componentesPacoteOrcamento).values(componentesPacote.map((componente: any) => ({ ...componente, empresaId, itemOrcamentoId: itemId })));
+    }
+    if (preparada.aproveitamentos.length) await tx.insert(aproveitamentosOrcamento).values(preparada.aproveitamentos.map((item: any) => ({ ...item, empresaId, orcamentoId })));
+    if (preparada.taxasAdicionais.length) await tx.insert(taxasAdicionaisOrcamento).values(preparada.taxasAdicionais.map((taxa: any) => ({ ...taxa, empresaId, orcamentoId })));
+    const c = preparada.cabecalho;
+    await tx.update(orcamentos).set({
+      desconto: c.desconto, frete: c.frete, fretePorTonelada: c.fretePorTonelada, pesoCargaToneladas: c.pesoCargaToneladas,
+      abatimentoFrete: c.abatimentoFrete, baseAposFrete: c.baseAposFrete, comissaoTipo: c.comissaoTipo, comissaoValor: c.comissaoValor,
+      comissaoCalculada: c.comissaoCalculada, taxaDescricao: c.taxaDescricao, taxaTipo: c.taxaTipo, taxaValor: c.taxaValor,
+      taxaCalculada: c.taxaCalculada, subtotal: c.subtotal, total: c.total, totalPecas: c.totalPecas,
+      totalMetroLinear: c.totalMetroLinear, totalVolume: c.totalVolume, versaoComercial: versaoNova,
+      versaoCalculoComercial: 1, pago: valorMonetarioEmCentavos(planoFinanceiro.saldoPago, "Total pago") >= valorMonetarioEmCentavos(totalComercialNovo, "Total revisado"),
+    }).where(and(eq(orcamentos.id, orcamentoId), eq(orcamentos.empresaId, empresaId)));
+    const vendaAtualizada = { ...venda, versaoComercial: versaoNova };
+    await criarReservasVendaInterna(tx, vendaAtualizada, userId, versaoNova);
+    await tx.insert(historicoAlteracoes).values({ empresaId, orcamentoId, usuarioId: userId, tipo: "alteracao" as any, detalhes: JSON.stringify({ acao: "revisao_venda_interna", revisaoId, versaoAnterior, versaoNova, motivo: motivo.trim(), totalAnterior: venda.total, totalNovo: c.total }) });
+    return { success: true, revisaoId, versaoComercial: versaoNova, deltaFinanceiro: planoFinanceiro.delta };
   });
 }
 
@@ -581,6 +747,60 @@ export async function atribuirNumeroVendaAprovada(orcamentoId: number, database?
   return numero;
 }
 
+async function criarReservasVendaInterna(tx: any, venda: any, userId: number, versao = venda.versaoComercial ?? 1) {
+  const existentes = await tx.select({ id: reservasEstoqueVenda.id })
+    .from(reservasEstoqueVenda)
+    .where(and(
+      eq(reservasEstoqueVenda.empresaId, venda.empresaId),
+      eq(reservasEstoqueVenda.orcamentoId, venda.id),
+      eq(reservasEstoqueVenda.versaoComercial, versao),
+      eq(reservasEstoqueVenda.estado, "reservada"),
+      eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico"),
+    )).limit(1).for("update");
+  if (existentes.length) return { criada: false };
+
+  const itens = await tx.select().from(itensOrcamento)
+    .where(and(eq(itensOrcamento.empresaId, venda.empresaId), eq(itensOrcamento.orcamentoId, venda.id)));
+  const lotes = await tx.select().from(lotesPecasSerradas)
+    .where(and(eq(lotesPecasSerradas.empresaId, venda.empresaId), eq(lotesPecasSerradas.propriedade, "proprio"), eq(lotesPecasSerradas.tipo, "peca")))
+    .for("update");
+  const reservasAtivas = await tx.select({ loteId: reservasEstoqueVenda.loteId, quantidade: reservasEstoqueVenda.quantidade })
+    .from(reservasEstoqueVenda)
+    .where(and(eq(reservasEstoqueVenda.empresaId, venda.empresaId), eq(reservasEstoqueVenda.estado, "reservada"), eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico")))
+    .for("update");
+  const alocacoes = planejarReservasVendaInterna({
+    itens: itens.map((item: any) => ({ ...item, quantidade: Number(item.quantidade) })),
+    lotes: lotes.map((lote: any) => ({ ...lote, quantidadeDisponivel: Number(lote.quantidadeDisponivel) })),
+    reservasAtivas,
+  });
+  if (alocacoes.length) {
+    await tx.insert(reservasEstoqueVenda).values(alocacoes.map((alocacao) => {
+      const item = itens.find((linha: any) => linha.id === alocacao.itemOrcamentoId);
+      return {
+        empresaId: venda.empresaId,
+        orcamentoId: venda.id,
+        itemOrcamentoId: alocacao.itemOrcamentoId,
+        versaoComercial: versao,
+        chaveReserva: alocacao.chaveReserva,
+        tipoComercializacao: "metro_cubico" as const,
+        produtoComercialId: item?.produtoComercialId ?? null,
+        madeiraId: item?.madeiraId ?? null,
+        bitolaId: item?.bitolaId ?? null,
+        loteId: alocacao.loteId,
+        descricaoRecurso: alocacao.madeiraNome,
+        espessura: alocacao.espessura,
+        largura: alocacao.largura,
+        comprimento: alocacao.comprimento,
+        quantidade: alocacao.quantidade,
+        unidadeMedida: "peca" as const,
+        estado: "reservada" as const,
+        criadoPor: userId,
+      };
+    }));
+  }
+  return { criada: true, quantidade: alocacoes.length };
+}
+
 export async function updateOrcamentoEstado(
   id: number,
   novoEstado: "rascunho" | "enviado" | "aprovado" | "rejeitado",
@@ -591,6 +811,31 @@ export async function updateOrcamentoEstado(
   const empresaId = (await getEmpresaUnica()).id;
   const db = dependencias?.database ?? await getDb();
   if (!db) throw new Error("Database not available");
+  const vendaAtual = (await db.select({ tipoVenda: orcamentos.tipoVenda }).from(orcamentos)
+    .where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId))).limit(1))[0];
+  if (vendaAtual?.tipoVenda === "interna" && novoEstado === "aprovado") {
+    return db.transaction(async (tx: any) => {
+      const venda = (await tx.select().from(orcamentos).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId))).for("update").limit(1))[0];
+      if (!venda) throw new Error("Orçamento não encontrado");
+      if (!podeAlterarOrcamentoPago(venda.pago, confirmacaoDupla)) throw new Error("Orçamento pago está bloqueado. Confirme duas vezes para prosseguir.");
+      if (venda.tipoVenda !== "interna") throw new Error("O tipo da venda foi alterado durante a aprovação");
+      if (venda.estado === "aprovado") {
+        if (venda.entregue) return { success: true, jaAprovado: true };
+        await criarReservasVendaInterna(tx, venda, userId ?? venda.criadoPor ?? 0);
+        if (userId) await criarTituloReceberDeOrcamento(id, userId, undefined, tx);
+        return { success: true, jaAprovado: true };
+      }
+      if (venda.estado === "rejeitado") throw new Error("Uma venda rejeitada não pode ser aprovada novamente neste fluxo");
+      await criarReservasVendaInterna(tx, venda, userId ?? venda.criadoPor ?? 0);
+      const numeroAprovado = await (dependencias?.atribuirNumero ?? ((orcamentoId: number) => atribuirNumeroVendaAprovada(orcamentoId, tx)))(id);
+      await tx.update(orcamentos).set({ estado: novoEstado }).where(and(eq(orcamentos.id, id), eq(orcamentos.empresaId, empresaId)));
+      if (userId) {
+        await tx.insert(historicoAlteracoes).values({ empresaId, orcamentoId: id, usuarioId: userId, tipo: "estado" as any, detalhes: JSON.stringify({ novoEstado, numero: numeroAprovado }) });
+        await criarTituloReceberDeOrcamento(id, userId, undefined, tx);
+      }
+      return { success: true };
+    });
+  }
   const orcamento = await validarAlteracaoOrcamento(id, confirmacaoDupla, db);
   const numeroAprovado = novoEstado === "aprovado"
     ? await (dependencias?.atribuirNumero ?? ((orcamentoId: number) => atribuirNumeroVendaAprovada(orcamentoId, db)))(id)

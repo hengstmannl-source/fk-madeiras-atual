@@ -39,7 +39,7 @@ vi.mock("@/lib/trpc", () => {
       madeira: { list: { useQuery: () => ({ data: [{ id: 4, nome: "Cedrinho", precoM3: "2400" }], isLoading: false, isError: false, isSuccess: true }) }, create: mutation },
       producao: { estoque: { resumo: queryVazia } },
       orcamento: {
-        get: queryOrigem, create: mutation,
+        get: queryOrigem, create: mutation, revisarInterna: mutation,
         produtosComerciais: { list: queryVazia, create: mutation },
         modelosMedida: { list: queryVazia, create: mutation, delete: mutation },
       },
@@ -76,7 +76,31 @@ describe("formulário de duplicação de orçamento", () => {
       clienteId: 3,
       duplicadoDeId: 42,
       estado: "rascunho",
-      itens: [expect.objectContaining({ madeiraId: null, madeiraNome: "Cedrinho selecionado para a cópia", espessura: "30", quantidade: 3, precoM3: "3000", valorTotal: "40.5" })],
+      subtotal: "40.50",
+      total: "40.50",
+      totalVolume: "0.013500",
+      itens: [expect.objectContaining({
+        madeiraId: null,
+        madeiraNome: "Cedrinho selecionado para a cópia",
+        espessura: "30",
+        quantidade: 3,
+        precoM3: "3000",
+        precoLinear: "4.5000",
+        valorPeca: "13.50",
+        valorTotal: "40.50",
+      })],
     }), expect.any(Object));
+  });
+
+  it("sinaliza precisão inválida na prévia sem perder o valor digitado", async () => {
+    render(<OrcamentoNovo />);
+    await screen.findByText(/nenhum orçamento foi criado ainda/i);
+    const preco = screen.getByLabelText("Preço por m³ (R$)");
+    fireEvent.change(preco, { target: { value: "1.005" } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/precisão máxima de 2 casas/i);
+    expect(preco).toHaveValue("1.005");
+    expect(screen.getByRole("button", { name: /salvar cópia como rascunho/i })).toBeDisabled();
+    expect(state.create).not.toHaveBeenCalled();
   });
 });

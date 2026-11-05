@@ -1,7 +1,9 @@
 import type { ItemVendaCalculado, TipoComercializacaoVenda } from "./vendaItemGroup";
 import type { TaxaAdicionalComercial } from "./acertoComercial";
+import { calcularPreviaComercial } from "@shared/comercial.preview";
 
 export type FormularioOrcamentoInicial = {
+  tipoVenda: "externa" | "interna";
   clienteId: string;
   desconto: string;
   frete: string;
@@ -20,6 +22,7 @@ export type FormularioOrcamentoInicial = {
 
 type OrigemDuplicacao = {
   orcamento: {
+    tipoVenda?: "externa" | "interna";
     clienteId: number;
     desconto: string | number;
     fretePorTonelada: string | number | null;
@@ -80,7 +83,8 @@ export function mapearOrcamentoParaDuplicacao(origem: OrigemDuplicacao): Formula
       ? [{ descricao: origem.orcamento.taxaDescricao, tipo: origem.orcamento.taxaTipo, valor: String(origem.orcamento.taxaValor ?? "0") }]
       : [];
 
-  return {
+  const formulario: FormularioOrcamentoInicial = {
+    tipoVenda: origem.orcamento.tipoVenda ?? "externa",
     clienteId: String(origem.orcamento.clienteId),
     desconto: String(origem.orcamento.desconto),
     frete: String(origem.orcamento.fretePorTonelada ?? "0"),
@@ -105,9 +109,10 @@ export function mapearOrcamentoParaDuplicacao(origem: OrigemDuplicacao): Formula
       tipoComercializacao: item.tipoComercializacao,
       unidadesPorComercializacao: item.unidadesPorComercializacao,
       precoM3: String(item.precoM3),
-      precoLinear: String(item.precoLinear),
-      valorPeca: String(item.valorPeca),
-      valorTotal: String(item.valorTotal),
+      // Valores calculados da origem são históricos e não alimentam a nova proposta.
+      precoLinear: "0.0000",
+      valorPeca: "0.00",
+      valorTotal: "0.00",
       componentesPacote: item.componentesPacote.map((componente) => ({
         descricao: componente.descricao,
         madeiraNome: componente.madeiraNome,
@@ -120,4 +125,28 @@ export function mapearOrcamentoParaDuplicacao(origem: OrigemDuplicacao): Formula
     aproveitamentos: origem.aproveitamentos.map((item) => ({ madeiraNome: item.madeiraNome, volume: String(item.volume), precoM3: String(item.precoM3) })),
     taxasAdicionais: taxas,
   };
+
+  try {
+    const calculado = calcularPreviaComercial({
+      itens: formulario.itens,
+      aproveitamentos: formulario.aproveitamentos,
+      desconto: formulario.desconto,
+      fretePorTonelada: formulario.frete,
+      pesoCargaToneladas: formulario.pesoCargaToneladas,
+      comissao: { tipo: formulario.comissaoTipo, valor: formulario.comissaoValor },
+      taxas: formulario.taxasAdicionais,
+    });
+    formulario.itens = formulario.itens.map((item, indice) => ({
+      ...item,
+      precoLinear: calculado.itens[indice].precoLinear,
+      valorPeca: calculado.itens[indice].valorPeca,
+      valorTotal: calculado.itens[indice].valorTotal,
+      unidadesPorComercializacao: item.tipoComercializacao === "metro_cubico"
+        ? 0
+        : calculado.itens[indice].unidadesPorComercializacao,
+    }));
+  } catch {
+    // Preserve all editable source fields; the form preview reports invalid inputs.
+  }
+  return formulario;
 }

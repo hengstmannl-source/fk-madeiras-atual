@@ -6,6 +6,7 @@ import {
   fornecedores, categoriasFinanceiras, contasFinanceiras, titulosFinanceiros, sequenciasVendas, sequenciasDocumentos,
   baixasFinanceiras, chequesFinanceiros, recorrenciasFinanceiras, configuracoesFinanceiras, alertasFinanceiros, extratosBancarios, movimentosExtratoBancario, anexosFinanceiros,
   plaquetas, conferenciasVariacaoPlaquetas, romaneiosCargaToras, romaneiosProducao, itensRomaneioToras, itensRomaneioProducao, aproveitamentosRomaneioProducao, aproveitamentosOrcamento, serragensTerceiros, itensSerragemToras, itensSerragemPecas, retiradasSerragemTerceiros, itensRetiradaSerragemTerceiros, lotesPecasSerradas, movimentacoesPlaquetas, movimentacoesEstoqueSerrado, notasDiesel, abastecimentosDiesel, regularizacoesVolumePlaquetas,
+  ciclosEntrega, reservasEstoqueVenda,
   type InsertMadeira, type InsertBitola, type InsertCliente,
   type InsertOrcamento, type InsertItemOrcamento, type InsertComponentePacoteOrcamento, type InsertProdutoComercial, type InsertComponenteProdutoComercial, type InsertModeloMedidaVenda, type InsertFornecedor,
   type InsertCategoriaFinanceira, type InsertContaFinanceira,
@@ -29,6 +30,7 @@ import { numerarDuplicidadesPlaquetas } from "../../shared/plaquetas";
 import { getDb } from "./core";
 import { getEmpresaUnica } from "./identidade";
 import { getInsertedId } from "./catalogo";
+import { planejarReservasVendaInterna } from "../vendas-internas.logic";
 import { prepararIdentificacaoPlaqueta } from "./estoque";
 import { garantirTituloFinanceiroAutomatico } from "./financeiro";
 import { obterCentroCustoAtivo } from "./centrosCusto";
@@ -786,6 +788,87 @@ export type DadosEntregaFisica = {
   aproveitamentos?: Array<{ madeiraNome: string; volume: string }>;
 };
 
+async function entregarVendaInterna(tx: any, venda: any, vendaId: number, userId: number, dadosEntrega: DadosEntregaFisica) {
+  const versao = venda.versaoComercial ?? 1;
+  const itensRetirada = await tx.select().from(itensOrcamento).where(and(eq(itensOrcamento.empresaId, venda.empresaId), eq(itensOrcamento.orcamentoId, vendaId)));
+  let reservas = await tx.select().from(reservasEstoqueVenda).where(and(
+    eq(reservasEstoqueVenda.empresaId, venda.empresaId),
+    eq(reservasEstoqueVenda.orcamentoId, vendaId),
+    eq(reservasEstoqueVenda.versaoComercial, versao),
+    eq(reservasEstoqueVenda.estado, "reservada"),
+    eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico"),
+  )).for("update");
+  if (!reservas.length) {
+    const [itens, lotes, outrasReservas] = await Promise.all([
+      tx.select().from(itensOrcamento).where(and(eq(itensOrcamento.empresaId, venda.empresaId), eq(itensOrcamento.orcamentoId, vendaId))),
+      tx.select().from(lotesPecasSerradas).where(and(eq(lotesPecasSerradas.empresaId, venda.empresaId), eq(lotesPecasSerradas.propriedade, "proprio"), eq(lotesPecasSerradas.tipo, "peca"))).for("update"),
+      tx.select({ loteId: reservasEstoqueVenda.loteId, quantidade: reservasEstoqueVenda.quantidade }).from(reservasEstoqueVenda)
+        .where(and(eq(reservasEstoqueVenda.empresaId, venda.empresaId), eq(reservasEstoqueVenda.estado, "reservada"), eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico"))).for("update"),
+    ]);
+    const alocacoes = planejarReservasVendaInterna({ itens: itens.map((item: any) => ({ ...item, quantidade: Number(item.quantidade) })), lotes: lotes.map((lote: any) => ({ ...lote, quantidadeDisponivel: Number(lote.quantidadeDisponivel) })), reservasAtivas: outrasReservas });
+    if (alocacoes.length) await tx.insert(reservasEstoqueVenda).values(alocacoes.map((a) => ({
+      empresaId: venda.empresaId, orcamentoId: vendaId, itemOrcamentoId: a.itemOrcamentoId, versaoComercial: versao,
+      chaveReserva: `${a.chaveReserva}-retirada-${Date.now()}`, tipoComercializacao: "metro_cubico" as const,
+      madeiraId: itens.find((item: any) => item.id === a.itemOrcamentoId)?.madeiraId ?? null,
+      bitolaId: itens.find((item: any) => item.id === a.itemOrcamentoId)?.bitolaId ?? null,
+      loteId: a.loteId, descricaoRecurso: a.madeiraNome, espessura: a.espessura, largura: a.largura,
+      comprimento: a.comprimento, quantidade: a.quantidade, unidadeMedida: "peca" as const,
+      estado: "reservada" as const, criadoPor: userId,
+    })));
+    reservas = alocacoes.length ? await tx.select().from(reservasEstoqueVenda).where(and(
+      eq(reservasEstoqueVenda.empresaId, venda.empresaId), eq(reservasEstoqueVenda.orcamentoId, vendaId),
+      eq(reservasEstoqueVenda.versaoComercial, versao), eq(reservasEstoqueVenda.estado, "reservada"), eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico"),
+    )).for("update") : [];
+  }
+  const ciclos = await tx.select({ id: ciclosEntrega.id, numeroCiclo: ciclosEntrega.numeroCiclo }).from(ciclosEntrega)
+    .where(and(eq(ciclosEntrega.empresaId, venda.empresaId), eq(ciclosEntrega.orcamentoId, vendaId)))
+    .orderBy(desc(ciclosEntrega.numeroCiclo)).limit(1).for("update");
+  const numeroCiclo = (ciclos[0]?.numeroCiclo ?? 0) + 1;
+  const cicloId = Number((await tx.insert(ciclosEntrega).values({
+    empresaId: venda.empresaId, orcamentoId: vendaId, numeroCiclo,
+    entregueEm: dadosEntrega.entregueEm, entreguePor: userId,
+  }))[0].insertId);
+  const lotes = await tx.select().from(lotesPecasSerradas).where(eq(lotesPecasSerradas.empresaId, venda.empresaId)).for("update");
+  const lotesPorId = new Map<number, any>(lotes.map((lote: any) => [lote.id, lote]));
+  const movimentos: Array<{ itemOrcamentoId: number; loteId: number | null; quantidade: string }> = [];
+  for (const reserva of reservas) {
+    let loteId = reserva.loteId as number | null;
+    const quantidade = Number(reserva.quantidade);
+    if (loteId !== null) {
+      const lote = lotesPorId.get(loteId);
+      if (!lote || Number(lote.quantidadeDisponivel) < quantidade) throw new Error("O estoque reservado foi alterado antes da retirada; a operação foi cancelada");
+      const saldo = Number(lote.quantidadeDisponivel) - quantidade;
+      await tx.update(lotesPecasSerradas).set({ quantidadeDisponivel: saldo, estado: saldo === 0 ? "esgotado" : saldo < 0 ? "negativo" : "disponivel" })
+        .where(and(eq(lotesPecasSerradas.empresaId, venda.empresaId), eq(lotesPecasSerradas.id, loteId)));
+      lote.quantidadeDisponivel = saldo;
+    } else {
+      const item = (await tx.select().from(itensOrcamento).where(and(eq(itensOrcamento.id, reserva.itemOrcamentoId), eq(itensOrcamento.empresaId, venda.empresaId))).limit(1))[0];
+      if (!item) throw new Error("Item reservado não encontrado");
+      const dimensoes = calcularItemRomaneio({ madeiraNome: item.madeiraNome, espessura: Number(reserva.espessura), largura: Number(reserva.largura), comprimento: Number(reserva.comprimento), quantidade });
+      const insercao = await tx.insert(lotesPecasSerradas).values({
+        empresaId: venda.empresaId, romaneioId: null, itemRomaneioId: null, madeiraNome: reserva.descricaoRecurso ?? item.madeiraNome,
+        espessura: Number(reserva.espessura).toFixed(2), largura: Number(reserva.largura).toFixed(2), comprimento: Number(reserva.comprimento).toFixed(2),
+        quantidadeProduzida: 0, quantidadeDisponivel: -dimensoes.quantidade, metrosLineares: dimensoes.metrosLineares.toFixed(4),
+        volume: dimensoes.volume.toFixed(6), estado: "negativo",
+      });
+      loteId = getInsertedId(insercao as MysqlInsertResult);
+      await tx.insert(movimentacoesEstoqueSerrado).values({ empresaId: venda.empresaId, loteId, itemVendaId: reserva.itemOrcamentoId, orcamentoId: vendaId, cicloEntregaId: cicloId, tipo: "saida_entrega", quantidade: Number(dimensoes.quantidade), volume: "0", motivo: `Retirada interna sem saldo da venda ${venda.numero ?? venda.id}`, criadoPor: userId });
+      movimentos.push({ itemOrcamentoId: reserva.itemOrcamentoId, loteId, quantidade: String(dimensoes.quantidade) });
+    }
+    if (reserva.loteId !== null) {
+      await tx.insert(movimentacoesEstoqueSerrado).values({ empresaId: venda.empresaId, loteId, itemVendaId: reserva.itemOrcamentoId, orcamentoId: vendaId, cicloEntregaId: cicloId, tipo: "saida_entrega", quantidade, volume: "0", motivo: `Retirada integral da venda interna ${venda.numero ?? venda.id}`, criadoPor: userId });
+      movimentos.push({ itemOrcamentoId: reserva.itemOrcamentoId, loteId, quantidade: String(quantidade) });
+    }
+    await tx.update(reservasEstoqueVenda).set({ estado: "consumida", encerradaEm: new Date(), encerradaPor: userId })
+      .where(and(eq(reservasEstoqueVenda.id, reserva.id), eq(reservasEstoqueVenda.empresaId, venda.empresaId), eq(reservasEstoqueVenda.estado, "reservada")));
+  }
+  await tx.update(orcamentos).set({ entregue: true, entregueEm: dadosEntrega.entregueEm, entreguePor: userId, modalidadeEntrega: dadosEntrega.modalidadeEntrega, observacoesEntrega: dadosEntrega.observacoesEntrega?.trim() || null, responsavelEntrega: dadosEntrega.responsavelEntrega.trim() })
+    .where(and(eq(orcamentos.id, vendaId), eq(orcamentos.empresaId, venda.empresaId)));
+  await tx.insert(historicoAlteracoes).values({ empresaId: venda.empresaId, orcamentoId: vendaId, usuarioId: userId, tipo: "alteracao" as any, detalhes: JSON.stringify({ acao: "retirada_integral_venda_interna", cicloId, numeroCiclo, entregueEm: dadosEntrega.entregueEm.toISOString(), itens: itensRetirada.map((item: any) => ({ itemId: item.id, tipoComercializacao: item.tipoComercializacao, quantidadeComercial: item.quantidade })), movimentosEstoqueM3: movimentos }) });
+  const pecasSemEstoque = reservas.filter((reserva: any) => reserva.loteId === null).reduce((sum: number, reserva: any) => sum + Number(reserva.quantidade), 0);
+  return { success: true, entregueEm: dadosEntrega.entregueEm, pecasEntregues: movimentos.reduce((sum, item) => sum + Number(item.quantidade), 0), pecasSemEstoque, aproveitamentoEntregue: 0, aproveitamentoSemEstoque: 0, cicloId };
+}
+
 export async function entregarVendaFisicamente(vendaId: number, userId: number, dadosEntrega: DadosEntregaFisica, dependencias?: { database?: any }) {
   const empresaId = (await getEmpresaUnica()).id;
   const db = dependencias?.database ?? await getDb();
@@ -795,6 +878,7 @@ export async function entregarVendaFisicamente(vendaId: number, userId: number, 
     if (!venda) throw new Error("Venda não encontrada");
     if (venda.estado !== "aprovado") throw new Error("Somente vendas aprovadas podem ser entregues");
     if (venda.entregue) throw new Error("Esta venda já possui entrega física registrada");
+    if (venda.tipoVenda === "interna") return entregarVendaInterna(tx, venda, vendaId, userId, dadosEntrega);
 
     const [itens, lotes] = await Promise.all([
       tx.select().from(itensOrcamento).where(and(eq(itensOrcamento.orcamentoId, vendaId), eq(itensOrcamento.empresaId, empresaId))),
@@ -806,7 +890,12 @@ export async function entregarVendaFisicamente(vendaId: number, userId: number, 
         ...item,
         quantidade: Number(item.quantidade),
       }));
-    const { alocacoes, deficits } = alocarPecasPermitindoNegativo(itensParaEstoque, lotes);
+    const reservasAtivas = await tx.select({ loteId: reservasEstoqueVenda.loteId, quantidade: reservasEstoqueVenda.quantidade }).from(reservasEstoqueVenda)
+      .where(and(eq(reservasEstoqueVenda.empresaId, venda.empresaId), eq(reservasEstoqueVenda.estado, "reservada"), eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico")));
+    const reservadoPorLote = new Map<number, number>();
+    for (const reserva of reservasAtivas) if (reserva.loteId != null) reservadoPorLote.set(reserva.loteId, (reservadoPorLote.get(reserva.loteId) ?? 0) + Number(reserva.quantidade));
+    const lotesAlocaveis = lotes.map((lote: any) => ({ ...lote, quantidadeDisponivel: Math.max(0, Number(lote.quantidadeDisponivel) - (reservadoPorLote.get(lote.id) ?? 0)) }));
+    const { alocacoes, deficits } = alocarPecasPermitindoNegativo(itensParaEstoque, lotesAlocaveis);
     const lotesPorId = new Map<number, any>(lotes.map((lote: any) => [lote.id, lote] as [number, any]));
     const movimentacoes: Array<{ itemVendaId?: number; loteId: number; quantidade: number; volume?: number }> = [];
     for (const alocacao of alocacoes) {
@@ -963,7 +1052,7 @@ export async function entregarVendaFisicamente(vendaId: number, userId: number, 
   });
 }
 
-export async function estornarEntregaVenda(vendaId: number, userId: number, motivo: string, dependencias?: { database?: any }) {
+export async function estornarEntregaVenda(vendaId: number, userId: number, motivo: string, dependencias?: { database?: any; confirmacaoMercadoriaNoDeposito?: boolean }) {
   const empresaId = (await getEmpresaUnica()).id;
   const db = dependencias?.database ?? await getDb();
   if (!db) throw new Error("Database not available");
@@ -971,6 +1060,40 @@ export async function estornarEntregaVenda(vendaId: number, userId: number, moti
   return db.transaction(async (tx: any) => {
     const venda = (await tx.select().from(orcamentos).where(and(eq(orcamentos.id, vendaId), eq(orcamentos.empresaId, empresaId))).limit(1))[0];
     if (!venda?.entregue) throw new Error("Esta venda não possui entrega física para estornar");
+    if (venda.tipoVenda === "interna") {
+      if (dependencias?.confirmacaoMercadoriaNoDeposito !== true) throw new Error("Confirme que a mercadoria retirada retornou integralmente ao depósito antes do estorno");
+      const ciclo = (await tx.select().from(ciclosEntrega).where(and(
+        eq(ciclosEntrega.empresaId, empresaId), eq(ciclosEntrega.orcamentoId, vendaId), eq(ciclosEntrega.estado, "entregue"),
+      )).for("update").limit(1))[0];
+      if (!ciclo) throw new Error("Não existe ciclo ativo de retirada para estornar");
+      const saidas = await tx.select().from(movimentacoesEstoqueSerrado).where(and(
+        eq(movimentacoesEstoqueSerrado.empresaId, empresaId),
+        eq(movimentacoesEstoqueSerrado.cicloEntregaId, ciclo.id),
+        eq(movimentacoesEstoqueSerrado.tipo, "saida_entrega"),
+      ));
+      const lotes = saidas.length ? await tx.select().from(lotesPecasSerradas).where(and(eq(lotesPecasSerradas.empresaId, empresaId), inArray(lotesPecasSerradas.id, saidas.map((saida: any) => saida.loteId)))).for("update") : [];
+      const lotesPorId = new Map<number, any>(lotes.map((lote: any) => [lote.id, lote]));
+      for (const saida of saidas) {
+        const lote = lotesPorId.get(saida.loteId);
+        if (!lote) throw new Error("Lote de peças não encontrado durante o estorno");
+        const saldo = Number(lote.quantidadeDisponivel) + Number(saida.quantidade);
+        await tx.update(lotesPecasSerradas).set({ quantidadeDisponivel: saldo, estado: saldo === 0 ? "esgotado" : saldo < 0 ? "negativo" : "disponivel" })
+          .where(and(eq(lotesPecasSerradas.id, lote.id), eq(lotesPecasSerradas.empresaId, empresaId)));
+        await tx.insert(movimentacoesEstoqueSerrado).values({
+          empresaId, loteId: lote.id, itemVendaId: saida.itemVendaId, orcamentoId: vendaId,
+          cicloEntregaId: ciclo.id, estornoDeMovimentoId: saida.id, tipo: "estorno_entrega",
+          quantidade: saida.quantidade, volume: saida.volume, motivo: motivo.trim(), criadoPor: userId,
+        });
+      }
+      await tx.update(reservasEstoqueVenda).set({ estado: "reservada", encerradaEm: null, encerradaPor: null })
+        .where(and(eq(reservasEstoqueVenda.empresaId, empresaId), eq(reservasEstoqueVenda.orcamentoId, vendaId), eq(reservasEstoqueVenda.versaoComercial, venda.versaoComercial ?? 1), eq(reservasEstoqueVenda.estado, "consumida"), eq(reservasEstoqueVenda.tipoComercializacao, "metro_cubico")));
+      await tx.update(ciclosEntrega).set({ estado: "estornado", estornadoEm: new Date(), estornadoPor: userId, motivoEstorno: motivo.trim() })
+        .where(and(eq(ciclosEntrega.id, ciclo.id), eq(ciclosEntrega.empresaId, empresaId), eq(ciclosEntrega.estado, "entregue")));
+      await tx.update(orcamentos).set({ entregue: false, entregueEm: null, entreguePor: null, modalidadeEntrega: null, observacoesEntrega: null, responsavelEntrega: null })
+        .where(and(eq(orcamentos.id, vendaId), eq(orcamentos.empresaId, empresaId)));
+      await tx.insert(historicoAlteracoes).values({ empresaId, orcamentoId: vendaId, usuarioId: userId, tipo: "alteracao" as any, detalhes: JSON.stringify({ acao: "retirada_interna_estornada", cicloId: ciclo.id, motivo: motivo.trim(), movimentosRevertidos: saidas.map((saida: any) => saida.id) }) });
+      return { success: true, pecasDevolvidas: saidas.reduce((total: number, saida: any) => total + Number(saida.quantidade), 0), cicloId: ciclo.id };
+    }
     const itens = await tx.select({ id: itensOrcamento.id }).from(itensOrcamento).where(and(eq(itensOrcamento.orcamentoId, vendaId), eq(itensOrcamento.empresaId, empresaId)));
     const idsItens = new Set(itens.map((item: any) => item.id));
     const saidas = (await tx.select().from(movimentacoesEstoqueSerrado)).filter((movimento: any) => movimento.tipo === "saida_entrega" && (movimento.orcamentoId === vendaId || (movimento.itemVendaId && idsItens.has(movimento.itemVendaId))));

@@ -1,7 +1,9 @@
 import { dataCalendarioValida } from "../../shared/validacaoData";
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import * as db from "../db";
+import { prepararNovaVendaComercial } from "../comercial.adapter";
+import { prepararPersistenciaNovaOperacaoComercial } from "../comercial.persistence";
 
 export const ItemSchema = z.object({
   madeiraId: z.number().int().positive().nullable().optional(),
@@ -212,6 +214,7 @@ export const orcamentoRouter = router({
       dataValidade: DataFinanceiraSchema.optional(),
       dataVencimento: DataFinanceiraSchema.optional(),
       competencia: DataFinanceiraSchema.optional(),
+      tipoVenda: z.enum(["externa", "interna"]).default("externa"),
       itens: z.array(ItemSchema).max(2000),
       aproveitamentos: z.array(AproveitamentoVendaSchema).max(30).default([]),
     }))
@@ -220,57 +223,95 @@ export const orcamentoRouter = router({
       const now = new Date();
       const estadoSolicitadoEfetivo = input.duplicadoDeId !== undefined ? "rascunho" : input.estado;
       const estadoInicial = determinarEstadoInicialOrcamento(estadoSolicitadoEfetivo, false);
-      const itensComComposicaoNormalizada = input.itens.map((item) => ({
-        ...item,
-        unidadesPorComercializacao: item.tipoComercializacao === "pacote"
-          ? item.componentesPacote.reduce((total, componente) => total + componente.quantidade, 0)
-          : item.tipoComercializacao === "unidade" ? 1 : 0,
-      }));
-      const baseAposFrete = Number(input.baseAposFrete.replace(",", ".")) || 0;
-      const taxasAdicionais = input.taxasAdicionais.map((taxa, ordem) => {
-        const valor = Number(taxa.valor);
-        const calculado = taxa.tipo === "percentual" ? baseAposFrete * valor / 100 : valor;
-        return { ...taxa, calculado: calculado.toFixed(2), ordem };
+
+      const calculo = prepararNovaVendaComercial(input.tipoVenda, {
+        clienteId: input.clienteId,
+        desconto: input.desconto,
+        fretePorTonelada: input.fretePorTonelada,
+        pesoCargaToneladas: input.pesoCargaToneladas,
+        comissaoTipo: input.comissaoTipo,
+        comissaoValor: input.comissaoValor,
+        itens: input.itens,
+        aproveitamentos: input.aproveitamentos,
+        taxasAdicionais: input.taxasAdicionais,
+        taxaDescricao: input.taxaDescricao ?? null,
+        taxaTipo: input.taxaTipo,
+        taxaValor: input.taxaValor,
+        frete: input.frete,
+        abatimentoFrete: input.abatimentoFrete,
+        baseAposFrete: input.baseAposFrete,
+        comissaoCalculada: input.comissaoCalculada,
+        taxaCalculada: input.taxaCalculada,
+        subtotal: input.subtotal,
+        total: input.total,
+        totalPecas: input.totalPecas,
+        totalMetroLinear: input.totalMetroLinear,
+        totalVolume: input.totalVolume,
       });
-      const orcamento = await db.createOrcamento(
-        {
-          numero: null,
-          clienteId: input.clienteId,
-          estado: estadoInicial,
-          desconto: input.desconto,
-          frete: input.frete,
-          fretePorTonelada: input.fretePorTonelada,
-          pesoCargaToneladas: input.pesoCargaToneladas,
-          abatimentoFrete: input.abatimentoFrete,
-          baseAposFrete: input.baseAposFrete,
-          comissaoTipo: input.comissaoTipo,
-          comissaoValor: input.comissaoValor,
-          comissaoCalculada: input.comissaoCalculada,
-          taxaDescricao: input.taxaDescricao ?? null,
-          taxaTipo: input.taxaTipo,
-          taxaValor: input.taxaValor,
-          taxaCalculada: input.taxaCalculada,
-          subtotal: input.subtotal,
-          total: input.total,
-          totalPecas: input.totalPecas,
-          totalMetroLinear: input.totalMetroLinear,
-          totalVolume: input.totalVolume,
-          observacoes: input.observacoes ?? null,
-          vendedor: input.vendedor ?? null,
-          criadoPor: ctx.user.id,
-          empresaId: ctx.configuracaoEmpresa.id,
-          dataValidade: input.dataValidade ? parseDataFinanceira(input.dataValidade) : null,
-          dataVencimento: input.dataVencimento ? parseDataFinanceira(input.dataVencimento) : now,
-          competencia: input.competencia ? parseDataFinanceira(input.competencia) : now,
-        },
-        itensComComposicaoNormalizada,
-        input.aproveitamentos,
-        taxasAdicionais,
-      );
+      const preparada = prepararPersistenciaNovaOperacaoComercial(calculo, {
+        empresaId: ctx.configuracaoEmpresa.id,
+        criadoPor: ctx.user.id,
+        estado: estadoInicial,
+        observacoes: input.observacoes ?? null,
+        vendedor: input.vendedor ?? null,
+        dataValidade: input.dataValidade ? parseDataFinanceira(input.dataValidade) : null,
+        dataVencimento: input.dataVencimento ? parseDataFinanceira(input.dataVencimento) : now,
+        competencia: input.competencia ? parseDataFinanceira(input.competencia) : now,
+      });
+      const orcamento = await db.createOrcamentoComercialCalculado(preparada);
       if (estadoSolicitadoEfetivo === "aprovado") {
         await db.updateOrcamentoEstado(orcamento.id, "aprovado", ctx.user.id);
       }
       return orcamento;
+    }),
+
+  revisarInterna: adminProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      versaoComercialEsperada: z.number().int().positive(),
+      motivo: z.string().trim().min(3).max(4000),
+      clienteId: z.number().int().positive(),
+      desconto: z.string().max(4000).default("0"),
+      frete: z.string().max(4000).default("0"),
+      fretePorTonelada: z.string().max(4000).default("0"),
+      pesoCargaToneladas: z.string().max(4000).default("0"),
+      comissaoTipo: z.enum(["percentual", "fixo"]).default("percentual"),
+      comissaoValor: z.string().max(4000).default("0"),
+      taxaDescricao: z.string().max(120).nullable().optional(),
+      taxaTipo: z.enum(["percentual", "fixo"]).default("percentual"),
+      taxaValor: z.string().max(4000).default("0"),
+      taxasAdicionais: z.array(TaxaAdicionalVendaSchema).max(20).default([]),
+      itens: z.array(ItemSchema).max(2000),
+      aproveitamentos: z.array(AproveitamentoVendaSchema).max(30).default([]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const origem = await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
+      if (origem.tipoVenda !== "interna") throw new Error("Somente vendas internas podem ser revisadas por este fluxo");
+      const calculo = prepararNovaVendaComercial("interna", {
+        clienteId: input.clienteId,
+        desconto: input.desconto,
+        fretePorTonelada: input.fretePorTonelada,
+        pesoCargaToneladas: input.pesoCargaToneladas,
+        comissaoTipo: input.comissaoTipo,
+        comissaoValor: input.comissaoValor,
+        itens: input.itens,
+        aproveitamentos: input.aproveitamentos,
+        taxasAdicionais: input.taxasAdicionais,
+        taxaDescricao: input.taxaDescricao ?? null,
+        taxaTipo: input.taxaTipo,
+        taxaValor: input.taxaValor,
+      });
+      const preparada = prepararPersistenciaNovaOperacaoComercial(calculo, {
+        empresaId: ctx.configuracaoEmpresa.id,
+        criadoPor: ctx.user.id,
+        estado: "aprovado",
+        observacoes: origem.observacoes,
+        vendedor: origem.vendedor,
+        dataValidade: origem.dataValidade,
+        dataVencimento: origem.dataVencimento,
+        competencia: origem.competencia,
+      });
+      return db.revisarVendaInterna(input.id, ctx.user.id, input.motivo, preparada, input.versaoComercialEsperada);
     }),
 
   updateEstado: protectedProcedure
@@ -344,10 +385,14 @@ export const orcamentoRouter = router({
     }),
 
   estornarEntrega: protectedProcedure
-    .input(z.object({ id: z.number().int().positive(), motivo: z.string().max(4000).trim().min(3, "Informe o motivo do estorno") }))
+    .input(z.object({ id: z.number().int().positive(), motivo: z.string().max(4000).trim().min(3, "Informe o motivo do estorno"), confirmacaoMercadoriaNoDeposito: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
-      await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
-      return db.estornarEntregaVenda(input.id, ctx.user.id, input.motivo);
+      const venda = await garantirVendaDaEmpresa(input.id, ctx.configuracaoEmpresa.id);
+      if (venda.tipoVenda === "interna") {
+        if (ctx.user.papel !== "proprietario" && ctx.user.papel !== "administrador") throw new Error("Somente proprietário ou administrador pode estornar uma retirada interna");
+        if (input.confirmacaoMercadoriaNoDeposito !== true) throw new Error("Confirme que a mercadoria retornou integralmente ao depósito");
+      }
+      return db.estornarEntregaVenda(input.id, ctx.user.id, input.motivo, { confirmacaoMercadoriaNoDeposito: input.confirmacaoMercadoriaNoDeposito });
     }),
 
   modelosMedida: router({

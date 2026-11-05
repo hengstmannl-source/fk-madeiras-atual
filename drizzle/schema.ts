@@ -1,4 +1,5 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, boolean, index, uniqueIndex } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, boolean, index, uniqueIndex, json, check } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -152,6 +153,12 @@ export const orcamentos = mysqlTable("orcamentos", {
   empresaId: int("empresaId").notNull(),
   numero: varchar("numero", { length: 20 }).unique(),
   clienteId: int("clienteId").notNull(),
+  /** Externo permanece como padrão para preservar a criação e a duplicação existentes. */
+  tipoVenda: mysqlEnum("tipoVenda", ["externa", "interna"]).notNull().default("externa"),
+  /** Versão comercial usada futuramente para controle otimista de concorrência. */
+  versaoComercial: int("versaoComercial").notNull().default(1),
+  /** NULL identifica cálculo legado/desconhecido; 1 identifica o primeiro algoritmo corrigido. */
+  versaoCalculoComercial: int("versaoCalculoComercial"),
   estado: mysqlEnum("estado", ["rascunho", "enviado", "aprovado", "rejeitado"]).notNull().default("rascunho"),
   desconto: decimal("desconto", { precision: 12, scale: 2 }).notNull().default("0"),
   frete: decimal("frete", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -358,6 +365,147 @@ export const historicoAlteracoes = mysqlTable("historicoAlteracoes", {
 });
 
 export type HistoricoAlteracao = typeof historicoAlteracoes.$inferSelect;
+
+/** Forma versionada suficiente para reconstruir a composição comercial sem consultar cadastros mutáveis. */
+export type SnapshotComercialVenda = {
+  cabecalho: {
+    tipoVenda: "externa" | "interna";
+    clienteId: number;
+    desconto: string;
+    frete: string;
+    fretePorTonelada: string;
+    pesoCargaToneladas: string;
+    abatimentoFrete: string;
+    baseAposFrete: string;
+    comissaoTipo: "percentual" | "fixo";
+    comissaoValor: string;
+    taxaDescricao: string | null;
+    taxaTipo: "percentual" | "fixo";
+    taxaValor: string;
+    taxaCalculada: string;
+    subtotal: string;
+    total: string;
+    totalPecas: number;
+    totalMetroLinear: string;
+    totalVolume: string;
+  };
+  itens: Array<{
+    dados: Record<string, unknown>;
+    componentesPacote: Array<Record<string, unknown>>;
+  }>;
+  taxasAdicionais: Array<Record<string, unknown>>;
+  aproveitamentos: Array<Record<string, unknown>>;
+};
+
+/** Snapshot imutável de cada alteração comercial; não modifica títulos, baixas ou estoque. */
+export const revisoesVendas = mysqlTable("revisoesVendas", {
+  id: int("id").autoincrement().primaryKey(),
+  empresaId: int("empresaId").notNull(),
+  orcamentoId: int("orcamentoId").notNull(),
+  versaoAnterior: int("versaoAnterior").notNull(),
+  versaoNova: int("versaoNova").notNull(),
+  usuarioId: int("usuarioId").notNull(),
+  motivo: text("motivo").notNull(),
+  totalAnterior: decimal("totalAnterior", { precision: 14, scale: 2 }).notNull(),
+  totalNovo: decimal("totalNovo", { precision: 14, scale: 2 }).notNull(),
+  snapshotAnterior: json("snapshotAnterior").$type<SnapshotComercialVenda>().notNull(),
+  snapshotNovo: json("snapshotNovo").$type<SnapshotComercialVenda>().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  versaoUnica: uniqueIndex("revisoes_vendas_empresa_orcamento_versao_unico").on(table.empresaId, table.orcamentoId, table.versaoNova),
+  orcamentoIndice: index("revisoes_vendas_empresa_orcamento_data_idx").on(table.empresaId, table.orcamentoId, table.createdAt),
+}));
+
+export type RevisaoVenda = typeof revisoesVendas.$inferSelect;
+export type InsertRevisaoVenda = typeof revisoesVendas.$inferInsert;
+
+/** Ciclo completo de retirada/entrega; cada ciclo estornado permanece no histórico. */
+export const ciclosEntrega = mysqlTable("ciclosEntrega", {
+  id: int("id").autoincrement().primaryKey(),
+  empresaId: int("empresaId").notNull(),
+  orcamentoId: int("orcamentoId").notNull(),
+  numeroCiclo: int("numeroCiclo").notNull(),
+  estado: mysqlEnum("estado", ["entregue", "estornado"]).notNull().default("entregue"),
+  /** NULL após estorno; o índice único permite novo ciclo, mas somente um ciclo ativo por venda. */
+  cicloAtivoOrcamentoId: int("cicloAtivoOrcamentoId").generatedAlwaysAs(
+    sql`CASE WHEN ${sql.identifier("estado")} = 'entregue' THEN ${sql.identifier("orcamentoId")} ELSE NULL END`,
+    { mode: "stored" },
+  ),
+  entregueEm: timestamp("entregueEm").notNull(),
+  entreguePor: int("entreguePor").notNull(),
+  estornadoEm: timestamp("estornadoEm"),
+  estornadoPor: int("estornadoPor"),
+  motivoEstorno: text("motivoEstorno"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  numeroUnico: uniqueIndex("ciclos_entrega_empresa_orcamento_numero_unico").on(table.empresaId, table.orcamentoId, table.numeroCiclo),
+  cicloAtivoUnico: uniqueIndex("ciclos_entrega_uma_ativa_por_venda_unico").on(table.empresaId, table.cicloAtivoOrcamentoId),
+  estadoIndice: index("ciclos_entrega_empresa_orcamento_estado_idx").on(table.empresaId, table.orcamentoId, table.estado),
+  motivoEstornoObrigatorio: check(
+    "ciclos_entrega_motivo_estorno_obrigatorio_chk",
+    sql`${table.estado} <> 'estornado' OR (${table.estornadoEm} IS NOT NULL AND ${table.estornadoPor} IS NOT NULL AND ${table.motivoEstorno} IS NOT NULL AND CHAR_LENGTH(TRIM(${table.motivoEstorno})) > 0)`,
+  ),
+}));
+
+export type CicloEntrega = typeof ciclosEntrega.$inferSelect;
+export type InsertCicloEntrega = typeof ciclosEntrega.$inferInsert;
+
+/** Reserva versionada. Linhas sem lote/material físico representam compromisso ainda não alocado. */
+export const reservasEstoqueVenda = mysqlTable("reservasEstoqueVenda", {
+  id: int("id").autoincrement().primaryKey(),
+  empresaId: int("empresaId").notNull(),
+  orcamentoId: int("orcamentoId").notNull(),
+  itemOrcamentoId: int("itemOrcamentoId").notNull(),
+  versaoComercial: int("versaoComercial").notNull(),
+  /** Chave determinística da alocação para tornar retries de aprovação idempotentes. */
+  chaveReserva: varchar("chaveReserva", { length: 120 }).notNull(),
+  tipoComercializacao: mysqlEnum("tipoComercializacao", ["metro_cubico", "unidade", "pacote"]).notNull(),
+  produtoComercialId: int("produtoComercialId"),
+  madeiraId: int("madeiraId"),
+  bitolaId: int("bitolaId"),
+  loteId: int("loteId"),
+  descricaoRecurso: varchar("descricaoRecurso", { length: 240 }),
+  espessura: decimal("espessura", { precision: 8, scale: 2 }),
+  largura: decimal("largura", { precision: 8, scale: 2 }),
+  comprimento: decimal("comprimento", { precision: 8, scale: 2 }),
+  quantidade: decimal("quantidade", { precision: 14, scale: 6 }).notNull(),
+  unidadeMedida: mysqlEnum("unidadeMedida", ["m3", "unidade", "pacote", "peca"]).notNull(),
+  estado: mysqlEnum("estado", ["reservada", "consumida", "liberada"]).notNull().default("reservada"),
+  criadoPor: int("criadoPor").notNull(),
+  encerradaEm: timestamp("encerradaEm"),
+  encerradaPor: int("encerradaPor"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  alocacaoUnica: uniqueIndex("reservas_estoque_venda_alocacao_unica").on(table.empresaId, table.orcamentoId, table.versaoComercial, table.chaveReserva),
+  versaoItemIndice: index("reservas_estoque_venda_empresa_versao_item_idx").on(table.empresaId, table.orcamentoId, table.versaoComercial, table.itemOrcamentoId),
+  loteEstadoIndice: index("reservas_estoque_venda_empresa_lote_estado_idx").on(table.empresaId, table.loteId, table.estado),
+  quantidadePositiva: check(
+    "reservas_estoque_venda_quantidade_positiva_chk",
+    sql`${table.quantidade} > 0`,
+  ),
+}));
+
+export type ReservaEstoqueVenda = typeof reservasEstoqueVenda.$inferSelect;
+export type InsertReservaEstoqueVenda = typeof reservasEstoqueVenda.$inferInsert;
+
+/** Vínculo idempotente entre revisão e título adicional, sem alterar títulos financeiros existentes. */
+export const ajustesFinanceirosVenda = mysqlTable("ajustesFinanceirosVenda", {
+  id: int("id").autoincrement().primaryKey(),
+  empresaId: int("empresaId").notNull(),
+  orcamentoId: int("orcamentoId").notNull(),
+  revisaoVendaId: int("revisaoVendaId").notNull(),
+  tituloFinanceiroId: int("tituloFinanceiroId").notNull(),
+  valorAjuste: decimal("valorAjuste", { precision: 14, scale: 2 }).notNull(),
+  criadoPor: int("criadoPor").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  revisaoIndice: index("ajustes_financeiros_venda_revisao_idx").on(table.revisaoVendaId),
+  tituloIndice: index("ajustes_financeiros_venda_titulo_idx").on(table.tituloFinanceiroId),
+  orcamentoIndice: index("ajustes_financeiros_venda_empresa_orcamento_idx").on(table.empresaId, table.orcamentoId),
+}));
+
+export type AjusteFinanceiroVenda = typeof ajustesFinanceirosVenda.$inferSelect;
+export type InsertAjusteFinanceiroVenda = typeof ajustesFinanceirosVenda.$inferInsert;
 
 export const empresaConfiguracoes = mysqlTable("empresaConfiguracoes", {
   /** Configuração visual exclusiva da empresa. */
@@ -668,13 +816,20 @@ export const movimentacoesEstoqueSerrado = mysqlTable("movimentacoesEstoqueSerra
   loteId: int("loteId").notNull(),
   itemVendaId: int("itemVendaId"),
   orcamentoId: int("orcamentoId"),
+  /** Nulos para preservar movimentos históricos fora do novo modelo de ciclos. */
+  cicloEntregaId: int("cicloEntregaId"),
+  /** Identifica o movimento original revertido; UNIQUE permite várias linhas NULL no MySQL. */
+  estornoDeMovimentoId: int("estornoDeMovimentoId"),
   tipo: mysqlEnum("tipo", ["entrada_producao", "saida_entrega", "estorno_entrega", "retirada_terceiro", "ajuste"]).notNull(),
   quantidade: int("quantidade").notNull(),
   volume: decimal("volume", { precision: 14, scale: 6 }).notNull().default("0"),
   motivo: text("motivo"),
   criadoPor: int("criadoPor").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  cicloIndice: index("mov_estoque_serrado_empresa_ciclo_idx").on(table.empresaId, table.cicloEntregaId),
+  estornoOriginalUnico: uniqueIndex("mov_estoque_serrado_estorno_original_unico").on(table.estornoDeMovimentoId),
+}));
 
 export type MovimentacaoEstoqueSerrado = typeof movimentacoesEstoqueSerrado.$inferSelect;
 
