@@ -708,9 +708,6 @@ export default function OrcamentoNovo() {
           <Card className="border border-border/50 shadow-sm sticky top-6">
             <CardContent className="p-5 space-y-4">
               <h3 className="font-semibold text-sm">Resumo da Venda</h3>
-              <div role="note" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
-                Prévia calculada pelo mesmo motor comercial usado pelo servidor. O valor final é recalculado e validado no backend ao salvar.
-              </div>
               {previaCorrigida.erro && <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">Não é possível calcular a prévia: {previaCorrigida.erro}. Os dados digitados foram preservados; revise os valores.</div>}
               <Separator />
               <div className="space-y-3">
@@ -721,7 +718,7 @@ export default function OrcamentoNovo() {
                     <Input type="number" value={desconto} onChange={(e) => setDesconto(e.target.value)} className="w-24 h-8 text-right bg-white" />
                   </div>
                   <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-amber-900">Frete abatido do pedido</p>
+                    <p className="text-xs font-semibold text-amber-900">Frete abatido do pedido (opcional)</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1"><Label className="text-xs text-muted-foreground">R$/tonelada</Label><Input aria-label="Frete por tonelada" type="number" value={frete} onChange={(e) => setFrete(e.target.value)} placeholder="0,00" className="h-8 bg-white text-right" /></div>
                       <div className="space-y-1"><Label className="text-xs text-muted-foreground">Peso (t)</Label><Input aria-label="Peso da carga em toneladas" type="number" value={pesoCargaToneladas} onChange={(e) => setPesoCargaToneladas(e.target.value)} placeholder="0,000" className="h-8 bg-white text-right" /></div>

@@ -36,8 +36,10 @@ export function calcularPreviaComercial(input: {
     })),
     aproveitamentos: input.aproveitamentos,
     desconto: input.desconto,
-    fretePorTonelada: input.fretePorTonelada,
-    pesoCargaToneladas: input.pesoCargaToneladas,
+    // Empty form fields mean no optional freight adjustment, matching the
+    // server defaults used when these values are omitted.
+    fretePorTonelada: input.fretePorTonelada.trim() || "0",
+    pesoCargaToneladas: input.pesoCargaToneladas.trim() || "0",
     comissao: input.comissao,
     taxas: input.taxas,
   });

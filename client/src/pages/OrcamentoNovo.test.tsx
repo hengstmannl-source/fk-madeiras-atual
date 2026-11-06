@@ -61,6 +61,11 @@ describe("formulário de duplicação de orçamento", () => {
     render(<OrcamentoNovo />);
     expect(await screen.findByText(/nenhum orçamento foi criado ainda/i)).toBeInTheDocument();
     expect(state.create).not.toHaveBeenCalled();
+    expect(screen.queryByText(/prévia calculada pelo mesmo motor/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Frete por tonelada"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Peso da carga em toneladas"), { target: { value: "" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Produto / madeira"), { target: { value: "Cedrinho selecionado para a cópia" } });
     fireEvent.change(screen.getByLabelText("Espessura (mm)"), { target: { value: "30" } });
