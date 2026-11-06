@@ -240,7 +240,32 @@ export const financeiroRouter = router({
     list: protectedProcedure.input(z.object({
       contaFinanceiraId: z.number().int().positive().optional(),
       estado: z.enum(["disponivel", "utilizado", "estornado", "depositado"]).optional(),
-    }).optional()).query(({ ctx, input }) => db.listChequesFinanceiros(input ?? {})),
+      estadoExibicao: z.enum(["disponivel", "utilizado", "estornado", "depositado", "compensado", "regularizado"]).optional(),
+      clienteId: z.number().int().positive().optional(), cliente: z.string().trim().max(200).optional(), contaDestinoId: z.number().int().positive().optional(),
+      referencia: z.string().trim().max(120).optional(), tituloId: z.number().int().positive().optional(),
+      dataRecebimentoInicio: DataFinanceiraSchema.optional(), dataRecebimentoFim: DataFinanceiraSchema.optional(),
+      dataCompensacaoInicio: DataFinanceiraSchema.optional(), dataCompensacaoFim: DataFinanceiraSchema.optional(),
+      dataDepositoInicio: DataFinanceiraSchema.optional(), dataDepositoFim: DataFinanceiraSchema.optional(),
+      valorMinimo: z.number().nonnegative().optional(), valorMaximo: z.number().nonnegative().optional(),
+      devolucoesMinimas: z.number().int().nonnegative().optional(), devolucoesMaximas: z.number().int().nonnegative().optional(),
+    }).optional()).query(({ ctx, input }) => {
+      const filtros = input ?? {};
+      for (const [inicio, fim] of [[filtros.dataRecebimentoInicio, filtros.dataRecebimentoFim], [filtros.dataCompensacaoInicio, filtros.dataCompensacaoFim], [filtros.dataDepositoInicio, filtros.dataDepositoFim]]) {
+        if (inicio && fim && inicio > fim) throw new TRPCError({ code: "BAD_REQUEST", message: "A data inicial do filtro deve ser anterior à data final." });
+      }
+      if (filtros.valorMinimo !== undefined && filtros.valorMaximo !== undefined && filtros.valorMinimo > filtros.valorMaximo) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O valor mínimo deve ser menor ou igual ao valor máximo." });
+      }
+      return db.listChequesFinanceiros({
+        ...filtros,
+        dataRecebimentoInicio: filtros.dataRecebimentoInicio ? dataLocal(filtros.dataRecebimentoInicio) : undefined,
+        dataRecebimentoFim: filtros.dataRecebimentoFim ? fimDoDiaLocal(filtros.dataRecebimentoFim) : undefined,
+        dataCompensacaoInicio: filtros.dataCompensacaoInicio ? dataLocal(filtros.dataCompensacaoInicio) : undefined,
+        dataCompensacaoFim: filtros.dataCompensacaoFim ? fimDoDiaLocal(filtros.dataCompensacaoFim) : undefined,
+        dataDepositoInicio: filtros.dataDepositoInicio ? dataLocal(filtros.dataDepositoInicio) : undefined,
+        dataDepositoFim: filtros.dataDepositoFim ? fimDoDiaLocal(filtros.dataDepositoFim) : undefined,
+      });
+    }),
     depositar: protectedProcedure.input(z.object({
       id: z.number().int().positive(),
       contaDestinoId: z.number().int().positive(),
@@ -248,7 +273,25 @@ export const financeiroRouter = router({
     })).mutation(({ ctx, input }) => db.depositarChequeFinanceiro({
       ...input,
       dataDeposito: dataLocal(input.dataDeposito),
+      userId: ctx.user.id,
     })),
+    reapresentar: protectedProcedure.input(z.object({
+      id: z.number().int().positive(), motivo: z.string().trim().min(3).max(2000), dataReapresentacao: DataFinanceiraSchema,
+    })).mutation(({ ctx, input }) => db.reapresentarChequeFinanceiro({
+      ...input, dataReapresentacao: dataLocal(input.dataReapresentacao), userId: ctx.user.id,
+    })),
+    compensar: protectedProcedure.input(z.object({ id: z.number().int().positive(), dataCompensacao: DataFinanceiraSchema }))
+      .mutation(({ ctx, input }) => db.compensarChequeFinanceiro({ ...input, dataCompensacao: dataLocal(input.dataCompensacao), userId: ctx.user.id })),
+    regularizar: protectedProcedure.input(z.object({
+      id: z.number().int().positive(), contaFinanceiraId: z.number().int().positive(),
+      valor: z.string().regex(/^\d+(?:[.,]\d{1,2})?$/), dataRegularizacao: DataFinanceiraSchema,
+      formaPagamento: z.enum(["pix", "dinheiro", "transferencia", "boleto", "cartao_credito", "cartao_debito", "outro"]),
+      referencia: z.string().trim().max(300).nullable().optional(), observacoes: z.string().trim().max(4000).nullable().optional(),
+      chaveIdempotencia: z.string().uuid(),
+    })).mutation(({ ctx, input }) => db.regularizarChequeFinanceiro({
+      ...input, valor: input.valor.replace(",", "."), dataRegularizacao: dataLocal(input.dataRegularizacao), userId: ctx.user.id,
+    })),
+    historico: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => db.historicoMovimentacoesCheque(input.id)),
     historicoDepositos: protectedProcedure.input(z.object({
       contaFinanceiraId: z.number().int().positive().optional(),
     }).optional()).query(({ ctx, input }) => db.listHistoricoDepositosPorConta(input?.contaFinanceiraId)),

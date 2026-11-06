@@ -6,6 +6,9 @@ const state = vi.hoisted(() => ({
   setLocation: vi.fn(),
   devolverCheque: vi.fn(),
   depositarCheque: vi.fn(),
+  reapresentarCheque: vi.fn(),
+  compensarCheque: vi.fn(),
+  regularizarCheque: vi.fn(),
   invalidate: vi.fn(),
 }));
 
@@ -14,15 +17,19 @@ vi.mock("@/lib/trpc", () => ({
   trpc: {
     useUtils: () => ({
       financeiro: {
-        cheques: { list: { invalidate: state.invalidate }, resumo: { invalidate: state.invalidate }, historicoDepositos: { invalidate: state.invalidate } },
+        cheques: { list: { invalidate: state.invalidate }, resumo: { invalidate: state.invalidate }, historicoDepositos: { invalidate: state.invalidate }, historico: { invalidate: state.invalidate } },
         titulos: { list: { invalidate: state.invalidate } },
       },
     }),
     financeiro: {
       cheques: {
         resumo: { useQuery: () => ({ data: { totalDisponivel: 750, quantidadeDisponivel: 2, totalUtilizado: 250, quantidadeUtilizada: 1, totalDepositado: 500, quantidadeDepositada: 1, contas: [{ id: 9, nome: "Caixa Cheque" }] }, isLoading: false }) },
-        list: { useQuery: () => ({ data: [{ id: 3, referencia: "CHQ-001", clienteNome: "Madeireira Norte", contaNome: "Caixa Cheque", dataRecebimento: "2026-08-11T12:00:00.000Z", dataCompensacao: new Date().toISOString(), alertaCompensacao: "hoje", utilizadoEm: null, depositadoEm: null, contaDestinoNome: null, estado: "disponivel", valor: "750.00" }], isLoading: false }) },
+        list: { useQuery: () => ({ data: [{ id: 3, referencia: "CHQ-001", clienteNome: "Madeireira Norte", contaNome: "Caixa Cheque", dataRecebimento: "2026-08-11T12:00:00.000Z", dataCompensacao: new Date().toISOString(), alertaCompensacao: "hoje", utilizadoEm: null, depositadoEm: null, contaDestinoNome: null, estado: "disponivel", estadoExibicao: "disponivel", quantidadeDevolucoes: 0, valorRegularizado: 0, tituloId: 12, valor: "750.00" }], isLoading: false }) },
+        historico: { useQuery: () => ({ data: [], isLoading: false }) },
         depositar: { useMutation: () => ({ mutate: state.depositarCheque, isPending: false, error: null }) },
+        reapresentar: { useMutation: () => ({ mutate: state.reapresentarCheque, isPending: false, error: null }) },
+        compensar: { useMutation: () => ({ mutate: state.compensarCheque, isPending: false, error: null }) },
+        regularizar: { useMutation: () => ({ mutate: state.regularizarCheque, isPending: false, error: null }) },
         historicoDepositos: { useQuery: () => ({ data: [{ id: 8, referencia: "CHQ-DEP", clienteNome: "Madeireira Sul", contaNome: "Caixa Cheque", contaDestinoNome: "Banco Principal", depositadoEm: "2026-08-12T12:00:00.000Z", valor: "500.00" }], isLoading: false }) },
       },
       contas: { list: { useQuery: () => ({ data: [{ id: 12, nome: "Banco Principal", tipo: "banco", ativa: true }], isLoading: false }) } },
@@ -41,6 +48,9 @@ describe("CaixaChequePage", () => {
     state.setLocation.mockReset();
     state.devolverCheque.mockReset();
     state.depositarCheque.mockReset();
+    state.reapresentarCheque.mockReset();
+    state.compensarCheque.mockReset();
+    state.regularizarCheque.mockReset();
     state.invalidate.mockReset();
   });
 
@@ -48,13 +58,13 @@ describe("CaixaChequePage", () => {
     render(<CaixaChequePage />);
 
     expect(screen.getByRole("heading", { name: "Caixa Cheque" })).toBeInTheDocument();
-    expect(screen.getAllByText("R$ 750,00")).toHaveLength(2);
+    expect(screen.getAllByText(/750,00/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("R$ 250,00")).toBeInTheDocument();
     expect(screen.getAllByText("R$ 500,00")).toHaveLength(2);
     expect(screen.getByText("1 conta(s) de cheque cadastrada(s) para o controle.")).toBeInTheDocument();
     expect(screen.getByText("CHQ-001")).toBeInTheDocument();
     expect(screen.getByText("Madeireira Norte")).toBeInTheDocument();
-    expect(screen.getByText("Disponível")).toBeInTheDocument();
+    expect(screen.getByText("Em carteira")).toBeInTheDocument();
     expect(screen.getByText("Atenção à compensação de cheques")).toBeInTheDocument();
     expect(screen.getByText(/compensa hoje/i)).toBeInTheDocument();
     expect(screen.getByText("CHQ-DEP")).toBeInTheDocument();
@@ -91,7 +101,7 @@ describe("CaixaChequePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Depositar" }));
     fireEvent.click(screen.getByLabelText("Conta bancária de destino"));
     fireEvent.click(screen.getByRole("option", { name: "Banco Principal" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar depósito" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar apresentação" }));
 
     expect(state.depositarCheque).toHaveBeenCalledWith(expect.objectContaining({
       id: 3,

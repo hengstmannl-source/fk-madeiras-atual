@@ -1,166 +1,141 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowDownToLine, CheckCircle2, CircleDollarSign, Clock3, Landmark, ReceiptText, RotateCcw, TriangleAlert } from "lucide-react";
+import { ArrowDownToLine, CheckCircle2, CircleDollarSign, Clock3, Landmark, ReceiptText, RotateCcw, TriangleAlert, History } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
-type EstadoCheque = "todos" | "disponivel" | "utilizado" | "estornado" | "depositado";
-
-const estadoCheque = {
-  disponivel: { label: "Disponível", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+type EstadoCheque = "todos" | "disponivel" | "utilizado" | "estornado" | "depositado" | "compensado" | "regularizado";
+type FiltrosCheque = { estado: EstadoCheque; referencia: string; cliente: string; bancoId: string; tituloId: string; dataRecebimentoInicio: string; dataRecebimentoFim: string; dataCompensacaoInicio: string; dataCompensacaoFim: string; dataDepositoInicio: string; dataDepositoFim: string; valorMinimo: string; valorMaximo: string; devolucoesMinimas: string };
+const filtrosVazios: FiltrosCheque = { estado: "todos", referencia: "", cliente: "", bancoId: "", tituloId: "", dataRecebimentoInicio: "", dataRecebimentoFim: "", dataCompensacaoInicio: "", dataCompensacaoFim: "", dataDepositoInicio: "", dataDepositoFim: "", valorMinimo: "", valorMaximo: "", devolucoesMinimas: "" };
+const estados: Record<string, { label: string; className: string }> = {
+  disponivel: { label: "Em carteira", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   utilizado: { label: "Utilizado", className: "border-violet-200 bg-violet-50 text-violet-700" },
   estornado: { label: "Devolvido", className: "border-rose-300 bg-rose-50 text-rose-700" },
-  depositado: { label: "Depositado", className: "border-sky-300 bg-sky-50 text-sky-800" },
-} as const;
-
-const alertaCompensacao = {
+  depositado: { label: "Depositado / apresentado", className: "border-sky-300 bg-sky-50 text-sky-800" },
+  compensado: { label: "Compensado", className: "border-teal-300 bg-teal-50 text-teal-800" },
+  regularizado: { label: "Regularizado", className: "border-slate-300 bg-slate-100 text-slate-800" },
+};
+const alertas = {
   atrasada: { label: "Compensação atrasada", className: "border-rose-300 bg-rose-100 text-rose-800", row: "bg-rose-50/80 hover:bg-rose-100/70" },
   hoje: { label: "Compensa hoje", className: "border-amber-300 bg-amber-100 text-amber-900", row: "bg-amber-50/80 hover:bg-amber-100/70" },
   proxima: { label: "Compensação próxima", className: "border-sky-300 bg-sky-100 text-sky-800", row: "bg-sky-50/80 hover:bg-sky-100/70" },
 } as const;
-
-function formatarData(data: Date | string | null) {
-  if (!data) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(data));
-}
+const hoje = () => new Date().toISOString().slice(0, 10);
+const formatarData = (data: Date | string | null) => data ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(data)) : "—";
+const parseNumero = (value: string) => value.trim() ? Number(value.replace(",", ".")) : undefined;
 
 export default function CaixaChequePage() {
   const [, setLocation] = useLocation();
-  const [estado, setEstado] = useState<EstadoCheque>("todos");
+  const [filtros, setFiltros] = useState(filtrosVazios);
   const [chequeEmDevolucao, setChequeEmDevolucao] = useState<any>(null);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
-  const [dataDevolucao, setDataDevolucao] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dataDevolucao, setDataDevolucao] = useState(hoje);
   const [chequeEmDeposito, setChequeEmDeposito] = useState<any>(null);
   const [contaDestinoId, setContaDestinoId] = useState("");
-  const [dataDeposito, setDataDeposito] = useState(() => new Date().toISOString().slice(0, 10));
-  const [contaHistoricoId, setContaHistoricoId] = useState("todas");
-  const filtro = useMemo(() => estado === "todos" ? undefined : { estado }, [estado]);
+  const [dataDeposito, setDataDeposito] = useState(hoje);
+  const [chequeParaReapresentar, setChequeParaReapresentar] = useState<any>(null);
+  const [motivoReapresentacao, setMotivoReapresentacao] = useState("");
+  const [dataReapresentacao, setDataReapresentacao] = useState(hoje);
+  const [chequeParaCompensar, setChequeParaCompensar] = useState<any>(null);
+  const [dataCompensacao, setDataCompensacao] = useState(hoje);
+  const [chequeParaRegularizar, setChequeParaRegularizar] = useState<any>(null);
+  const [regularizacao, setRegularizacao] = useState({ contaFinanceiraId: "", valor: "", formaPagamento: "pix", data: hoje(), referencia: "", observacoes: "" });
+  const [historicoChequeId, setHistoricoChequeId] = useState<number | null>(null);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(true);
   const utils = trpc.useUtils();
   const resumo = trpc.financeiro.cheques.resumo.useQuery();
-  const cheques = trpc.financeiro.cheques.list.useQuery(filtro);
+  const queryFiltros = useMemo(() => ({
+    ...(filtros.estado !== "todos" ? { estadoExibicao: filtros.estado } : {}),
+    ...(filtros.referencia ? { referencia: filtros.referencia } : {}), ...(filtros.cliente ? { cliente: filtros.cliente } : {}),
+    ...(filtros.bancoId ? { contaDestinoId: Number(filtros.bancoId) } : {}), ...(filtros.tituloId ? { tituloId: Number(filtros.tituloId) } : {}),
+    ...(filtros.dataRecebimentoInicio ? { dataRecebimentoInicio: filtros.dataRecebimentoInicio } : {}), ...(filtros.dataRecebimentoFim ? { dataRecebimentoFim: filtros.dataRecebimentoFim } : {}),
+    ...(filtros.dataCompensacaoInicio ? { dataCompensacaoInicio: filtros.dataCompensacaoInicio } : {}), ...(filtros.dataCompensacaoFim ? { dataCompensacaoFim: filtros.dataCompensacaoFim } : {}),
+    ...(filtros.dataDepositoInicio ? { dataDepositoInicio: filtros.dataDepositoInicio } : {}), ...(filtros.dataDepositoFim ? { dataDepositoFim: filtros.dataDepositoFim } : {}),
+    ...(parseNumero(filtros.valorMinimo) !== undefined ? { valorMinimo: parseNumero(filtros.valorMinimo) } : {}), ...(parseNumero(filtros.valorMaximo) !== undefined ? { valorMaximo: parseNumero(filtros.valorMaximo) } : {}),
+    ...(filtros.devolucoesMinimas ? { devolucoesMinimas: Number(filtros.devolucoesMinimas) } : {}),
+  }), [filtros]);
+  const cheques = trpc.financeiro.cheques.list.useQuery(queryFiltros);
   const chequesDisponiveis = trpc.financeiro.cheques.list.useQuery({ estado: "disponivel" });
+  const alertasCompensacao = useMemo(() => (chequesDisponiveis.data ?? []).filter((cheque: any) => cheque.alertaCompensacao), [chequesDisponiveis.data]);
   const contas = trpc.financeiro.contas.list.useQuery();
   const contasBancarias = useMemo(() => (contas.data ?? []).filter((conta: any) => conta.ativa && conta.tipo === "banco"), [contas.data]);
-  const filtroHistorico = useMemo(() => contaHistoricoId === "todas" ? undefined : { contaFinanceiraId: Number(contaHistoricoId) }, [contaHistoricoId]);
-  const historicoDepositos = trpc.financeiro.cheques.historicoDepositos.useQuery(filtroHistorico);
-  const alertas = useMemo(() => (chequesDisponiveis.data ?? []).filter((cheque: any) => cheque.alertaCompensacao), [chequesDisponiveis.data]);
-  const devolverCheque = trpc.financeiro.titulos.devolverCheque.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.financeiro.cheques.list.invalidate(),
-        utils.financeiro.cheques.resumo.invalidate(),
-        utils.financeiro.titulos.list.invalidate(),
-      ]);
-      setChequeEmDevolucao(null);
-      setMotivoDevolucao("");
-    },
-  });
-  const depositarCheque = trpc.financeiro.cheques.depositar.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.financeiro.cheques.list.invalidate(),
-        utils.financeiro.cheques.resumo.invalidate(),
-        utils.financeiro.cheques.historicoDepositos.invalidate(),
-      ]);
-      setChequeEmDeposito(null);
-      setContaDestinoId("");
-    },
-  });
+  const historicoDepositos = trpc.financeiro.cheques.historicoDepositos.useQuery(filtros.bancoId ? { contaFinanceiraId: Number(filtros.bancoId) } : undefined);
+  const historico = trpc.financeiro.cheques.historico.useQuery({ id: historicoChequeId ?? 0 }, { enabled: historicoChequeId !== null });
+  const invalidar = async () => Promise.all([utils.financeiro.cheques.list.invalidate(), utils.financeiro.cheques.resumo.invalidate(), utils.financeiro.cheques.historico.invalidate(), utils.financeiro.cheques.historicoDepositos.invalidate(), utils.financeiro.titulos.list.invalidate()]);
+  const devolverCheque = trpc.financeiro.titulos.devolverCheque.useMutation({ onSuccess: async () => { await invalidar(); setChequeEmDevolucao(null); setMotivoDevolucao(""); toast.success("Devolução registrada e histórico preservado"); }, onError: (e) => toast.error(e.message) });
+  const depositarCheque = trpc.financeiro.cheques.depositar.useMutation({ onSuccess: async () => { await invalidar(); setChequeEmDeposito(null); toast.success("Apresentação/depósito registrado"); }, onError: (e) => toast.error(e.message) });
+  const reapresentarCheque = trpc.financeiro.cheques.reapresentar.useMutation({ onSuccess: async () => { await invalidar(); setChequeParaReapresentar(null); setMotivoReapresentacao(""); toast.success("Cheque retornou à carteira para nova apresentação"); }, onError: (e) => toast.error(e.message) });
+  const compensarCheque = trpc.financeiro.cheques.compensar.useMutation({ onSuccess: async () => { await invalidar(); setChequeParaCompensar(null); toast.success("Compensação bancária registrada"); }, onError: (e) => toast.error(e.message) });
+  const regularizarCheque = trpc.financeiro.cheques.regularizar.useMutation({ onSuccess: async () => { await invalidar(); setChequeParaRegularizar(null); toast.success("Pagamento registrado e vinculado ao título original"); }, onError: (e) => toast.error(e.message) });
 
-  const abrirDevolucao = (cheque: any) => {
-    setChequeEmDevolucao(cheque);
-    setMotivoDevolucao("");
-    setDataDevolucao(new Date().toISOString().slice(0, 10));
+  const confirmarDevolucao = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (chequeEmDevolucao) devolverCheque.mutate({ id: chequeEmDevolucao.id, motivo: motivoDevolucao, dataDevolucao }); };
+  const confirmarDeposito = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (chequeEmDeposito && contaDestinoId) depositarCheque.mutate({ id: chequeEmDeposito.id, contaDestinoId: Number(contaDestinoId), dataDeposito }); };
+  const confirmarReapresentacao = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (chequeParaReapresentar) reapresentarCheque.mutate({ id: chequeParaReapresentar.id, motivo: motivoReapresentacao, dataReapresentacao }); };
+  const confirmarCompensacao = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (chequeParaCompensar) compensarCheque.mutate({ id: chequeParaCompensar.id, dataCompensacao }); };
+  const confirmarRegularizacao = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (!chequeParaRegularizar || !regularizacao.contaFinanceiraId) return;
+    regularizarCheque.mutate({ id: chequeParaRegularizar.id, contaFinanceiraId: Number(regularizacao.contaFinanceiraId), valor: regularizacao.valor, dataRegularizacao: regularizacao.data, formaPagamento: regularizacao.formaPagamento as any, referencia: regularizacao.referencia || null, observacoes: regularizacao.observacoes || null, chaveIdempotencia: crypto.randomUUID() });
   };
+  const abrirRegularizacao = (cheque: any) => { setChequeParaRegularizar(cheque); setRegularizacao({ contaFinanceiraId: String((contas.data ?? []).find((c: any) => c.ativa && c.tipo !== "caixa_cheque")?.id ?? ""), valor: String(Math.max(0, Number(cheque.valor) - Number(cheque.valorRegularizado ?? 0)).toFixed(2)), formaPagamento: "pix", data: hoje(), referencia: "", observacoes: "" }); };
+  const limparFiltros = () => setFiltros(filtrosVazios);
 
-  const confirmarDevolucao = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!chequeEmDevolucao) return;
-    devolverCheque.mutate({ id: chequeEmDevolucao.id, motivo: motivoDevolucao, dataDevolucao });
-  };
+  return <main className="container min-w-0 py-6 sm:py-8">
+    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div><div className="mb-2 flex items-center gap-2 text-primary"><ReceiptText className="h-5 w-5" /><span className="text-sm font-semibold uppercase tracking-wide">Financeiro</span></div><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Caixa Cheque</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Acompanhe apresentações, devoluções sucessivas e regularizações, mantendo o vínculo financeiro original.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setLocation("/financeiro?tipo=receber")}>Registrar recebimento</Button><Button onClick={() => setLocation("/financeiro?tipo=pagar")}>Usar em pagamento</Button></div></div>
 
-  const abrirDeposito = (cheque: any) => {
-    setChequeEmDeposito(cheque);
-    setContaDestinoId(contasBancarias[0] ? String(contasBancarias[0].id) : "");
-    setDataDeposito(new Date().toISOString().slice(0, 10));
-  };
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Card className="border-emerald-200 bg-emerald-50/40"><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2 text-emerald-800"><CircleDollarSign className="h-4 w-4" />Saldo disponível</CardDescription><CardTitle className="text-2xl text-emerald-950">{formatCurrency(resumo.data?.totalDisponivel ?? 0)}</CardTitle></CardHeader><CardContent><p className="text-xs text-emerald-800">{resumo.data?.quantidadeDisponivel ?? 0} cheque(s) em carteira.</p></CardContent></Card>
+      <Card><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-violet-600" />Total utilizado</CardDescription><CardTitle className="text-2xl">{formatCurrency(resumo.data?.totalUtilizado ?? 0)}</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground">{resumo.data?.quantidadeUtilizada ?? 0} cheque(s) vinculados a pagamentos.</p></CardContent></Card>
+      <Card className="border-sky-200 bg-sky-50/40"><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2 text-sky-800"><Landmark className="h-4 w-4" />Total depositado</CardDescription><CardTitle className="text-2xl text-sky-950">{formatCurrency(resumo.data?.totalDepositado ?? 0)}</CardTitle></CardHeader><CardContent><p className="text-xs text-sky-800">{resumo.data?.quantidadeDepositada ?? 0} cheque(s) apresentados à conta bancária.</p></CardContent></Card>
+      <Card><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-amber-600" />Contas Caixa Cheque</CardDescription><CardTitle className="text-2xl">{resumo.data?.contas.length ?? 0}</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground">{resumo.data?.contas.length ? `${resumo.data.contas.length} conta(s) de cheque cadastrada(s) para o controle.` : "Cadastre uma conta do tipo Caixa Cheque para iniciar o controle."}</p></CardContent></Card>
+    </div>
 
-  const confirmarDeposito = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!chequeEmDeposito || !contaDestinoId) return;
-    depositarCheque.mutate({ id: chequeEmDeposito.id, contaDestinoId: Number(contaDestinoId), dataDeposito });
-  };
+    {alertasCompensacao.length > 0 && <section className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm"><div className="flex items-start gap-3"><div className="rounded-lg bg-amber-100 p-2 text-amber-800"><TriangleAlert className="h-5 w-5" /></div><div className="min-w-0 flex-1"><h2 className="font-semibold">Atenção à compensação de cheques</h2><p className="mt-0.5 text-sm text-amber-900">{alertasCompensacao.length} cheque(s) em carteira exigem acompanhamento da data prevista de compensação.</p><div className="mt-3 flex flex-wrap gap-2">{alertasCompensacao.slice(0, 6).map((cheque: any) => { const alerta = alertas[cheque.alertaCompensacao as keyof typeof alertas]; return <Badge key={cheque.id} variant="outline" className={alerta?.className}>{cheque.referencia} · {formatarData(cheque.dataCompensacao)}</Badge>; })}</div></div></div></section>}
 
-  return (
-    <main className="container py-6 sm:py-8">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-primary"><ReceiptText className="h-5 w-5" /><span className="text-sm font-semibold uppercase tracking-wide">Financeiro</span></div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Caixa Cheque</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Controle individual dos cheques recebidos e utilizados, preservando o vínculo com cada cliente e movimentação financeira.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setLocation("/financeiro?tipo=receber")}>Registrar recebimento</Button>
-          <Button onClick={() => setLocation("/financeiro?tipo=pagar")}>Usar em pagamento</Button>
-        </div>
-      </div>
+    <Card className="mt-6"><CardHeader className="flex-row items-center justify-between gap-3"><div><CardTitle>Filtros</CardTitle><CardDescription>Combine situação, cliente, origem, datas e faixa de valores.</CardDescription></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={limparFiltros}>Limpar filtros</Button><Button variant="ghost" size="sm" onClick={() => setFiltrosAbertos(!filtrosAbertos)}>{filtrosAbertos ? "Recolher" : "Expandir"}</Button></div></CardHeader>
+      {filtrosAbertos && <CardContent className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-1.5"><Label>Situação</Label><Select value={filtros.estado} onValueChange={(estado: EstadoCheque) => setFiltros((f) => ({ ...f, estado }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todas</SelectItem><SelectItem value="disponivel">Em carteira</SelectItem><SelectItem value="depositado">Depositados / apresentados</SelectItem><SelectItem value="compensado">Compensados</SelectItem><SelectItem value="estornado">Devolvidos</SelectItem><SelectItem value="regularizado">Regularizados</SelectItem><SelectItem value="utilizado">Utilizados</SelectItem></SelectContent></Select></div>
+        <div className="grid gap-1.5"><Label>Referência do cheque</Label><Input value={filtros.referencia} onChange={(e) => setFiltros((f) => ({ ...f, referencia: e.target.value }))} placeholder="Número ou referência" /></div>
+        <div className="grid gap-1.5"><Label>Cliente</Label><Input value={filtros.cliente} onChange={(e) => setFiltros((f) => ({ ...f, cliente: e.target.value }))} placeholder="Buscar cliente" /></div>
+        <div className="grid gap-1.5"><Label>Conta bancária de destino</Label><Select value={filtros.bancoId || "todas"} onValueChange={(bancoId) => setFiltros((f) => ({ ...f, bancoId: bancoId === "todas" ? "" : bancoId }))}><SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas</SelectItem>{contasBancarias.map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}</SelectContent></Select></div>
+        <div className="grid gap-1.5"><Label>Venda / título de origem (ID)</Label><Input inputMode="numeric" value={filtros.tituloId} onChange={(e) => setFiltros((f) => ({ ...f, tituloId: e.target.value.replace(/\D/g, "") }))} placeholder="ID do título" /></div>
+        <div className="grid gap-1.5"><Label>Recebido a partir de</Label><Input type="date" value={filtros.dataRecebimentoInicio} onChange={(e) => setFiltros((f) => ({ ...f, dataRecebimentoInicio: e.target.value }))} /></div>
+        <div className="grid gap-1.5"><Label>Recebido até</Label><Input type="date" value={filtros.dataRecebimentoFim} onChange={(e) => setFiltros((f) => ({ ...f, dataRecebimentoFim: e.target.value }))} /></div>
+        <div className="grid gap-1.5"><Label>Vencimento/apresentação a partir de</Label><Input type="date" value={filtros.dataCompensacaoInicio} onChange={(e) => setFiltros((f) => ({ ...f, dataCompensacaoInicio: e.target.value }))} /></div>
+        <div className="grid gap-1.5"><Label>Vencimento/apresentação até</Label><Input type="date" value={filtros.dataCompensacaoFim} onChange={(e) => setFiltros((f) => ({ ...f, dataCompensacaoFim: e.target.value }))} /></div>
+        <div className="grid gap-1.5"><Label>Depositado a partir de</Label><Input type="date" value={filtros.dataDepositoInicio} onChange={(e) => setFiltros((f) => ({ ...f, dataDepositoInicio: e.target.value }))} /></div>
+        <div className="grid gap-1.5"><Label>Depositado até</Label><Input type="date" value={filtros.dataDepositoFim} onChange={(e) => setFiltros((f) => ({ ...f, dataDepositoFim: e.target.value }))} /></div>
+        <div className="grid gap-1.5"><Label>Valor mínimo</Label><Input inputMode="decimal" value={filtros.valorMinimo} onChange={(e) => setFiltros((f) => ({ ...f, valorMinimo: e.target.value }))} placeholder="0,00" /></div>
+        <div className="grid gap-1.5"><Label>Valor máximo</Label><Input inputMode="decimal" value={filtros.valorMaximo} onChange={(e) => setFiltros((f) => ({ ...f, valorMaximo: e.target.value }))} placeholder="0,00" /></div>
+        <div className="grid gap-1.5"><Label>Mínimo de devoluções</Label><Input type="number" min="0" value={filtros.devolucoesMinimas} onChange={(e) => setFiltros((f) => ({ ...f, devolucoesMinimas: e.target.value }))} /></div>
+      </CardContent>}
+    </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="border-emerald-200 bg-emerald-50/40"><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2 text-emerald-800"><CircleDollarSign className="h-4 w-4" />Saldo disponível</CardDescription><CardTitle className="text-2xl text-emerald-950">{formatCurrency(resumo.data?.totalDisponivel ?? 0)}</CardTitle></CardHeader><CardContent><p className="text-xs text-emerald-800">{resumo.data?.quantidadeDisponivel ?? 0} cheque(s) disponível(is) para pagamento.</p></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-violet-600" />Total utilizado</CardDescription><CardTitle className="text-2xl">{formatCurrency(resumo.data?.totalUtilizado ?? 0)}</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground">{resumo.data?.quantidadeUtilizada ?? 0} cheque(s) já vinculados a pagamentos.</p></CardContent></Card>
-        <Card className="border-sky-200 bg-sky-50/40"><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2 text-sky-800"><Landmark className="h-4 w-4" />Total depositado</CardDescription><CardTitle className="text-2xl text-sky-950">{formatCurrency(resumo.data?.totalDepositado ?? 0)}</CardTitle></CardHeader><CardContent><p className="text-xs text-sky-800">{resumo.data?.quantidadeDepositada ?? 0} cheque(s) transferidos para bancos.</p></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardDescription className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-amber-600" />Contas de cheque</CardDescription><CardTitle className="text-2xl">{resumo.data?.contas.length ?? 0}</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground">{resumo.data?.contas.length ? `${resumo.data.contas.length} conta(s) de cheque cadastrada(s) para o controle.` : "Cadastre uma conta do tipo Caixa Cheque no Financeiro para iniciar o controle."}</p></CardContent></Card>
-      </div>
+    <Card className="mt-6 min-w-0 overflow-hidden"><CardHeader><CardTitle>Cheques individuais</CardTitle><CardDescription>{cheques.data?.length ?? 0} resultado(s) com os filtros atuais. As tentativas novas ficam em histórico cronológico.</CardDescription></CardHeader><CardContent className="min-w-0">
+      {cheques.isLoading ? <div className="py-12 text-center text-sm text-muted-foreground">Carregando cheques...</div> : cheques.data?.length ? <><p className="mb-2 text-xs text-muted-foreground sm:hidden">Deslize a tabela lateralmente para consultar todos os dados.</p><div className="max-w-full overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Referência</TableHead><TableHead>Cliente</TableHead><TableHead>Recebido</TableHead><TableHead>Apresentação</TableHead><TableHead>Devoluções</TableHead><TableHead>Situação</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{cheques.data.map((cheque: any) => { const estado = estados[cheque.estadoExibicao] ?? estados[cheque.estado]; const alerta = cheque.alertaCompensacao ? alertas[cheque.alertaCompensacao as keyof typeof alertas] : null; return <TableRow key={cheque.id} className={alerta?.row}><TableCell className="font-medium">{cheque.referencia}<div className="text-xs text-muted-foreground">Título #{cheque.tituloId}</div></TableCell><TableCell>{cheque.clienteNome}</TableCell><TableCell className="whitespace-nowrap">{formatarData(cheque.dataRecebimento)}</TableCell><TableCell className="whitespace-nowrap">{cheque.estado === "depositado" ? <>{formatarData(cheque.depositadoEm)}<div className="text-xs text-muted-foreground">{cheque.contaDestinoNome}</div></> : formatarData(cheque.dataCompensacao)}</TableCell><TableCell>{cheque.quantidadeDevolucoes}</TableCell><TableCell><Badge variant="outline" className={estado?.className}>{estado?.label}</Badge>{alerta && <div className="mt-1"><Badge variant="outline" className={alerta.className}>{alerta.label}</Badge></div>}{Number(cheque.valorRegularizado) > 0 && cheque.estadoExibicao !== "regularizado" && <div className="mt-1 text-xs text-muted-foreground">Regularizado: {formatCurrency(cheque.valorRegularizado)}</div>}</TableCell><TableCell className="text-right font-medium">{formatCurrency(cheque.valor)}</TableCell><TableCell><div className="flex min-w-44 flex-wrap justify-end gap-1.5">{cheque.estado === "disponivel" && <><Button size="sm" variant="outline" onClick={() => { setChequeEmDeposito(cheque); setContaDestinoId(contasBancarias[0] ? String(contasBancarias[0].id) : ""); setDataDeposito(hoje()); }}><ArrowDownToLine className="mr-1 h-3.5 w-3.5" />Depositar</Button><Button size="sm" variant="outline" onClick={() => { setChequeEmDevolucao(cheque); setMotivoDevolucao(""); setDataDevolucao(hoje()); }}><RotateCcw className="mr-1 h-3.5 w-3.5" />Devolver</Button></>}{cheque.estado === "depositado" && <><Button size="sm" variant="outline" onClick={() => { setChequeEmDevolucao(cheque); setMotivoDevolucao(""); setDataDevolucao(hoje()); }}>Registrar devolução</Button>{cheque.estadoExibicao !== "compensado" && <Button size="sm" variant="outline" onClick={() => { setChequeParaCompensar(cheque); setDataCompensacao(hoje()); }}>Confirmar compensação</Button>}</>}{cheque.estadoExibicao === "estornado" && <><Button size="sm" variant="outline" onClick={() => { setChequeParaReapresentar(cheque); setMotivoReapresentacao(""); setDataReapresentacao(hoje()); }}>Reapresentar</Button><Button size="sm" variant="outline" onClick={() => abrirRegularizacao(cheque)}>Regularizar</Button></>}<Button size="icon" variant="ghost" aria-label={`Ver histórico do cheque ${cheque.referencia}`} onClick={() => setHistoricoChequeId(cheque.id)}><History className="h-4 w-4" /></Button></div></TableCell></TableRow>; })}</TableBody></Table></div></> : <div className="rounded-lg border border-dashed py-14 text-center"><ReceiptText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="font-medium">Nenhum cheque encontrado</p><p className="mt-1 text-sm text-muted-foreground">Ajuste ou limpe os filtros para continuar.</p></div>}
+    </CardContent></Card>
 
-      {alertas.length > 0 && <section className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm"><div className="flex items-start gap-3"><div className="rounded-lg bg-amber-100 p-2 text-amber-800"><TriangleAlert className="h-5 w-5" /></div><div className="min-w-0 flex-1"><h2 className="font-semibold">Atenção à compensação de cheques</h2><p className="mt-0.5 text-sm text-amber-900">{alertas.length} cheque(s) disponível(is) precisam de acompanhamento: a tabela abaixo identifica os itens atrasados, previstos para hoje ou próximos da compensação.</p><div className="mt-3 flex flex-wrap gap-2">{alertas.slice(0, 6).map((cheque: any) => { const alerta = alertaCompensacao[cheque.alertaCompensacao as keyof typeof alertaCompensacao]; return <Badge key={cheque.id} variant="outline" className={alerta.className}>{cheque.referencia} · {formatarData(cheque.dataCompensacao)}</Badge>; })}{alertas.length > 6 && <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-900">+{alertas.length - 6} item(ns)</Badge>}</div></div></div></section>}
+    <Card className="mt-6 min-w-0 overflow-hidden"><CardHeader><CardTitle>Histórico de depósitos em contas bancárias</CardTitle><CardDescription>Transferências de controle já registradas para bancos, sem criar recebimentos adicionais.</CardDescription></CardHeader><CardContent>{historicoDepositos.isLoading ? <p className="py-6 text-center text-sm text-muted-foreground">Carregando histórico…</p> : historicoDepositos.data?.length ? <div className="max-w-full overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Cheque</TableHead><TableHead>Cliente</TableHead><TableHead>Caixa de origem</TableHead><TableHead>Banco de destino</TableHead><TableHead className="text-right">Valor</TableHead></TableRow></TableHeader><TableBody>{historicoDepositos.data.map((cheque: any) => <TableRow key={cheque.id}><TableCell>{formatarData(cheque.depositadoEm)}</TableCell><TableCell className="font-medium">{cheque.referencia}</TableCell><TableCell>{cheque.clienteNome}</TableCell><TableCell>{cheque.contaNome}</TableCell><TableCell>{cheque.contaDestinoNome}</TableCell><TableCell className="text-right">{formatCurrency(cheque.valor)}</TableCell></TableRow>)}</TableBody></Table></div> : <p className="py-8 text-center text-sm text-muted-foreground">Nenhum depósito registrado.</p>}</CardContent></Card>
 
-      <Card className="mt-6">
-        <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Cheques individuais</CardTitle><CardDescription className="mt-1">Referência, cliente, entrada, compensação, utilização ou transferência para banco.</CardDescription></div><Select value={estado} onValueChange={(valor) => setEstado(valor as EstadoCheque)}><SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Filtrar situação" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os cheques</SelectItem><SelectItem value="disponivel">Disponíveis</SelectItem><SelectItem value="utilizado">Utilizados</SelectItem><SelectItem value="depositado">Depositados</SelectItem><SelectItem value="estornado">Estornados</SelectItem></SelectContent></Select></CardHeader>
-        <CardContent>
-          {cheques.isLoading ? <div className="py-12 text-center text-sm text-muted-foreground">Carregando cheques...</div> : cheques.data?.length ? <><p className="mb-2 text-xs text-muted-foreground sm:hidden">Deslize a tabela lateralmente para consultar todos os dados.</p><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Referência</TableHead><TableHead>Cliente</TableHead><TableHead>Conta</TableHead><TableHead>Recebido em</TableHead><TableHead>Compensação</TableHead><TableHead>Utilizado em</TableHead><TableHead>Depósito</TableHead><TableHead>Situação</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader><TableBody>{cheques.data.map((cheque: any) => { const dadosEstado = estadoCheque[cheque.estado as keyof typeof estadoCheque]; const alerta = cheque.alertaCompensacao ? alertaCompensacao[cheque.alertaCompensacao as keyof typeof alertaCompensacao] : null; return <TableRow key={cheque.id} className={alerta?.row}><TableCell className="font-medium">{cheque.referencia}</TableCell><TableCell>{cheque.clienteNome}</TableCell><TableCell>{cheque.contaNome}</TableCell><TableCell>{formatarData(cheque.dataRecebimento)}</TableCell><TableCell><div className="flex flex-col items-start gap-1"><span>{formatarData(cheque.dataCompensacao)}</span>{alerta && <Badge variant="outline" className={alerta.className}>{alerta.label}</Badge>}</div></TableCell><TableCell>{formatarData(cheque.utilizadoEm)}</TableCell><TableCell>{cheque.estado === "depositado" ? <div className="flex flex-col gap-1"><span>{formatarData(cheque.depositadoEm)}</span><span className="text-xs text-muted-foreground">{cheque.contaDestinoNome}</span></div> : "—"}</TableCell><TableCell><div className="flex flex-col items-start gap-1"><Badge variant="outline" className={dadosEstado.className}>{dadosEstado.label}</Badge>{cheque.estado === "estornado" && <span className="max-w-48 text-xs text-muted-foreground">{formatarData(cheque.estornadoEm)} · {cheque.motivoEstorno || "Sem motivo informado"}</span>}</div></TableCell><TableCell className="text-right font-medium">{formatCurrency(cheque.valor)}</TableCell><TableCell className="text-right">{cheque.estado === "disponivel" ? <div className="flex justify-end gap-2"><Button type="button" variant="outline" size="sm" className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={() => abrirDeposito(cheque)}><ArrowDownToLine className="mr-1.5 h-3.5 w-3.5" />Depositar</Button><Button type="button" variant="outline" size="sm" className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => abrirDevolucao(cheque)}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />Devolver</Button></div> : <span className="text-xs text-muted-foreground">—</span>}</TableCell></TableRow>; })}</TableBody></Table></div></> : <div className="rounded-lg border border-dashed py-14 text-center"><ReceiptText className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="font-medium">Nenhum cheque encontrado</p><p className="mt-1 text-sm text-muted-foreground">Registre um recebimento com a conta Caixa Cheque para inserir o primeiro item.</p></div>}
-        </CardContent>
-      </Card>
+    <Dialog open={Boolean(chequeEmDevolucao)} onOpenChange={(aberto) => { if (!aberto && !devolverCheque.isPending) setChequeEmDevolucao(null); }}><DialogContent><form onSubmit={confirmarDevolucao} className="grid gap-4"><DialogHeader><DialogTitle>Registrar cheque devolvido</DialogTitle><DialogDescription>O cheque {chequeEmDevolucao?.referencia} será registrado como devolvido. O recebimento será revertido somente na primeira devolução; reapresentações posteriores mantêm o histórico e não duplicam o estorno.</DialogDescription></DialogHeader><div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="data-devolucao">Data da devolução</Label><Input id="data-devolucao" type="date" value={dataDevolucao} onChange={(e) => setDataDevolucao(e.target.value)} required /></div><div className="grid gap-2"><Label htmlFor="motivo-devolucao">Motivo da devolução</Label><Textarea id="motivo-devolucao" value={motivoDevolucao} onChange={(e) => setMotivoDevolucao(e.target.value)} required minLength={3} maxLength={2000} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setChequeEmDevolucao(null)} disabled={devolverCheque.isPending}>Cancelar</Button><Button type="submit" variant="destructive" disabled={devolverCheque.isPending}>{devolverCheque.isPending ? "Registrando…" : "Confirmar devolução"}</Button></DialogFooter></form></DialogContent></Dialog>
 
-      <Card className="mt-6">
-        <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Histórico de depósitos bancários</CardTitle><CardDescription className="mt-1">Transferências internas concluídas, rastreáveis pela conta bancária de destino e fora do fluxo de caixa.</CardDescription></div><Select value={contaHistoricoId} onValueChange={setContaHistoricoId}><SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Filtrar conta bancária" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas as contas bancárias</SelectItem>{contasBancarias.map((conta: any) => <SelectItem key={conta.id} value={String(conta.id)}>{conta.nome}</SelectItem>)}</SelectContent></Select></CardHeader>
-        <CardContent>{historicoDepositos.isLoading ? <div className="py-10 text-center text-sm text-muted-foreground">Carregando histórico...</div> : historicoDepositos.data?.length ? <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Depósito em</TableHead><TableHead>Cheque</TableHead><TableHead>Cliente</TableHead><TableHead>Conta de origem</TableHead><TableHead>Conta bancária</TableHead><TableHead className="text-right">Valor</TableHead></TableRow></TableHeader><TableBody>{historicoDepositos.data.map((cheque: any) => <TableRow key={cheque.id}><TableCell>{formatarData(cheque.depositadoEm)}</TableCell><TableCell className="font-medium">{cheque.referencia}</TableCell><TableCell>{cheque.clienteNome}</TableCell><TableCell>{cheque.contaNome}</TableCell><TableCell>{cheque.contaDestinoNome}</TableCell><TableCell className="text-right font-medium">{formatCurrency(cheque.valor)}</TableCell></TableRow>)}</TableBody></Table></div> : <div className="rounded-lg border border-dashed py-10 text-center"><Landmark className="mx-auto mb-3 h-7 w-7 text-muted-foreground" /><p className="font-medium">Nenhum depósito encontrado</p><p className="mt-1 text-sm text-muted-foreground">Quando um cheque compensado for transferido para um banco, ele aparecerá neste histórico.</p></div>}</CardContent>
-      </Card>
+    <Dialog open={Boolean(chequeEmDeposito)} onOpenChange={(aberto) => { if (!aberto && !depositarCheque.isPending) setChequeEmDeposito(null); }}><DialogContent><form onSubmit={confirmarDeposito} className="grid gap-4"><DialogHeader><DialogTitle>Apresentar cheque em conta bancária</DialogTitle><DialogDescription>Registra a transferência de controle para a conta bancária. Não cria uma nova baixa financeira.</DialogDescription></DialogHeader><div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="conta-destino-deposito">Conta bancária de destino</Label><Select value={contaDestinoId} onValueChange={setContaDestinoId}><SelectTrigger id="conta-destino-deposito"><SelectValue placeholder="Selecione a conta" /></SelectTrigger><SelectContent>{contasBancarias.map((conta: any) => <SelectItem key={conta.id} value={String(conta.id)}>{conta.nome}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label htmlFor="data-deposito">Data da apresentação</Label><Input id="data-deposito" type="date" value={dataDeposito} onChange={(e) => setDataDeposito(e.target.value)} required /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setChequeEmDeposito(null)}>Cancelar</Button><Button type="submit" disabled={depositarCheque.isPending || !contaDestinoId}>Confirmar apresentação</Button></DialogFooter></form></DialogContent></Dialog>
 
-      <Dialog open={Boolean(chequeEmDevolucao)} onOpenChange={(aberto) => { if (!aberto && !devolverCheque.isPending) setChequeEmDevolucao(null); }}>
-        <DialogContent>
-          <form onSubmit={confirmarDevolucao}>
-            <DialogHeader><DialogTitle>Registrar cheque devolvido</DialogTitle><DialogDescription>O cheque <strong>{chequeEmDevolucao?.referencia}</strong> será removido do saldo disponível e o recebimento será revertido no valor de {formatCurrency(chequeEmDevolucao?.valor ?? 0)}.</DialogDescription></DialogHeader>
-            <div className="mt-5 grid gap-4">
-              <div className="grid gap-2"><Label htmlFor="data-devolucao">Data da devolução</Label><input id="data-devolucao" type="date" value={dataDevolucao} onChange={(event) => setDataDevolucao(event.target.value)} required className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm" /></div>
-              <div className="grid gap-2"><Label htmlFor="motivo-devolucao">Motivo da devolução</Label><Textarea id="motivo-devolucao" value={motivoDevolucao} onChange={(event) => setMotivoDevolucao(event.target.value)} placeholder="Ex.: cheque devolvido por insuficiência de fundos" required minLength={3} /></div>
-              {devolverCheque.error && <p className="text-sm text-destructive">{devolverCheque.error.message}</p>}
-            </div>
-            <DialogFooter className="mt-6"><Button type="button" variant="outline" onClick={() => setChequeEmDevolucao(null)} disabled={devolverCheque.isPending}>Cancelar</Button><Button type="submit" variant="destructive" disabled={devolverCheque.isPending}>{devolverCheque.isPending ? "Registrando..." : "Confirmar devolução"}</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+    <Dialog open={Boolean(chequeParaReapresentar)} onOpenChange={(aberto) => { if (!aberto && !reapresentarCheque.isPending) setChequeParaReapresentar(null); }}><DialogContent><form onSubmit={confirmarReapresentacao} className="grid gap-4"><DialogHeader><DialogTitle>Reapresentar cheque</DialogTitle><DialogDescription>O mesmo cheque retornará à carteira e ficará elegível para nova apresentação. Nenhum recebível será criado.</DialogDescription></DialogHeader><div className="grid gap-4"><div className="grid gap-2"><Label htmlFor="data-reapresentacao">Data</Label><Input id="data-reapresentacao" type="date" value={dataReapresentacao} onChange={(e) => setDataReapresentacao(e.target.value)} required /></div><div className="grid gap-2"><Label htmlFor="motivo-reapresentacao">Observação da reapresentação</Label><Textarea id="motivo-reapresentacao" value={motivoReapresentacao} onChange={(e) => setMotivoReapresentacao(e.target.value)} minLength={3} maxLength={2000} required /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setChequeParaReapresentar(null)}>Cancelar</Button><Button type="submit" disabled={reapresentarCheque.isPending}>{reapresentarCheque.isPending ? "Salvando…" : "Confirmar reapresentação"}</Button></DialogFooter></form></DialogContent></Dialog>
 
-      <Dialog open={Boolean(chequeEmDeposito)} onOpenChange={(aberto) => { if (!aberto && !depositarCheque.isPending) setChequeEmDeposito(null); }}>
-        <DialogContent>
-          <form onSubmit={confirmarDeposito}>
-            <DialogHeader><DialogTitle>Depositar cheque em conta bancária</DialogTitle><DialogDescription>O cheque <strong>{chequeEmDeposito?.referencia}</strong> será transferido do Caixa Cheque para a conta bancária selecionada. Esta operação é interna e não altera o relatório de fluxo de caixa.</DialogDescription></DialogHeader>
-            <div className="mt-5 grid gap-4">
-              <div className="grid gap-2"><Label htmlFor="conta-destino-deposito">Conta bancária de destino</Label><Select value={contaDestinoId} onValueChange={setContaDestinoId} disabled={!contasBancarias.length}><SelectTrigger id="conta-destino-deposito"><SelectValue placeholder={contasBancarias.length ? "Selecione a conta" : "Nenhuma conta bancária ativa"} /></SelectTrigger><SelectContent>{contasBancarias.map((conta: any) => <SelectItem key={conta.id} value={String(conta.id)}>{conta.nome}</SelectItem>)}</SelectContent></Select>{!contasBancarias.length && <p className="text-xs text-destructive">Cadastre ou ative uma conta do tipo Banco no Financeiro antes de registrar o depósito.</p>}</div>
-              <div className="grid gap-2"><Label htmlFor="data-deposito">Data do depósito</Label><input id="data-deposito" type="date" value={dataDeposito} onChange={(event) => setDataDeposito(event.target.value)} required className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm" /></div>
-              {depositarCheque.error && <p className="text-sm text-destructive">{depositarCheque.error.message}</p>}
-            </div>
-            <DialogFooter className="mt-6"><Button type="button" variant="outline" onClick={() => setChequeEmDeposito(null)} disabled={depositarCheque.isPending}>Cancelar</Button><Button type="submit" disabled={depositarCheque.isPending || !contaDestinoId}>{depositarCheque.isPending ? "Depositando..." : "Confirmar depósito"}</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </main>
-  );
+    <Dialog open={Boolean(chequeParaCompensar)} onOpenChange={(aberto) => { if (!aberto && !compensarCheque.isPending) setChequeParaCompensar(null); }}><DialogContent><form onSubmit={confirmarCompensacao} className="grid gap-4"><DialogHeader><DialogTitle>Confirmar compensação bancária</DialogTitle><DialogDescription>Confirme somente após verificar que o banco compensou o cheque {chequeParaCompensar?.referencia}. Se houver devolução nesta apresentação, o recebimento será lançado no título original reutilizando o mesmo cheque.</DialogDescription></DialogHeader><div className="grid gap-2"><Label htmlFor="data-compensacao">Data da compensação</Label><Input id="data-compensacao" type="date" value={dataCompensacao} onChange={(e) => setDataCompensacao(e.target.value)} required /></div><DialogFooter><Button type="button" variant="outline" onClick={() => setChequeParaCompensar(null)}>Cancelar</Button><Button type="submit" disabled={compensarCheque.isPending}>{compensarCheque.isPending ? "Registrando…" : "Confirmar compensação"}</Button></DialogFooter></form></DialogContent></Dialog>
+
+    <Dialog open={Boolean(chequeParaRegularizar)} onOpenChange={(aberto) => { if (!aberto && !regularizarCheque.isPending) setChequeParaRegularizar(null); }}><DialogContent className="sm:max-w-xl"><form onSubmit={confirmarRegularizacao} className="grid gap-4"><DialogHeader><DialogTitle>Registrar regularização por pagamento</DialogTitle><DialogDescription>Será criada uma baixa financeira real no título de origem do cheque; não será registrada compensação bancária fictícia.</DialogDescription></DialogHeader><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label>Conta financeira *</Label><Select value={regularizacao.contaFinanceiraId} onValueChange={(v) => setRegularizacao((x) => ({ ...x, contaFinanceiraId: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{(contas.data ?? []).filter((c: any) => c.ativa && c.tipo !== "caixa_cheque").map((c: any) => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label>Forma de pagamento *</Label><Select value={regularizacao.formaPagamento} onValueChange={(v) => setRegularizacao((x) => ({ ...x, formaPagamento: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[["pix", "PIX"], ["transferencia", "Transferência"], ["dinheiro", "Dinheiro"], ["boleto", "Boleto"], ["cartao_credito", "Cartão de crédito"], ["cartao_debito", "Cartão de débito"], ["outro", "Outro"]].map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label>Valor recebido *</Label><Input inputMode="decimal" value={regularizacao.valor} onChange={(e) => setRegularizacao((x) => ({ ...x, valor: e.target.value }))} required /></div><div className="grid gap-2"><Label>Data *</Label><Input type="date" value={regularizacao.data} onChange={(e) => setRegularizacao((x) => ({ ...x, data: e.target.value }))} required /></div><div className="grid gap-2 sm:col-span-2"><Label>Referência / comprovante</Label><Input maxLength={300} value={regularizacao.referencia} onChange={(e) => setRegularizacao((x) => ({ ...x, referencia: e.target.value }))} /></div><div className="grid gap-2 sm:col-span-2"><Label>Observações</Label><Textarea maxLength={4000} value={regularizacao.observacoes} onChange={(e) => setRegularizacao((x) => ({ ...x, observacoes: e.target.value }))} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setChequeParaRegularizar(null)}>Cancelar</Button><Button type="submit" disabled={regularizarCheque.isPending || !regularizacao.contaFinanceiraId}>{regularizarCheque.isPending ? "Registrando…" : "Registrar pagamento"}</Button></DialogFooter></form></DialogContent></Dialog>
+
+    <Dialog open={historicoChequeId !== null} onOpenChange={(aberto) => !aberto && setHistoricoChequeId(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Histórico do cheque</DialogTitle><DialogDescription>Eventos registrados a partir desta implementação; eventos anteriores não são reconstruídos além dos dados já existentes.</DialogDescription></DialogHeader>{historico.isLoading ? <p>Carregando histórico…</p> : <div className="max-h-[55dvh] overflow-y-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Operação</TableHead><TableHead>Tentativa</TableHead><TableHead>Valor</TableHead><TableHead>Detalhe</TableHead></TableRow></TableHeader><TableBody>{(historico.data ?? []).map((evento: any) => <TableRow key={evento.id}><TableCell className="whitespace-nowrap">{formatarData(evento.dataOperacao)}</TableCell><TableCell>{({ devolucao: "Devolução", reapresentacao: "Reapresentação", deposito: "Apresentação / depósito", compensacao: "Compensação bancária", regularizacao: "Regularização por pagamento" } as Record<string, string>)[evento.tipo] ?? evento.tipo}</TableCell><TableCell>{evento.tentativa ?? "—"}</TableCell><TableCell>{evento.valor ? formatCurrency(evento.valor) : "—"}</TableCell><TableCell className="max-w-56 whitespace-normal">{evento.motivo || evento.referencia || (evento.baixaFinanceiraId ? `Baixa #${evento.baixaFinanceiraId}` : "—")}</TableCell></TableRow>)}</TableBody></Table></div>}<DialogFooter><Button variant="outline" onClick={() => setHistoricoChequeId(null)}>Fechar</Button></DialogFooter></DialogContent></Dialog>
+  </main>;
 }

@@ -862,5 +862,20 @@ describe("FinanceiroPage — cancelamento manual", () => {
 
     expect(screen.getByText(/A soma dos cheques deve ser igual ao valor deste recebimento\./)).toBeInTheDocument();
     expect(screen.getByLabelText("Valor deste recebimento (R$) *")).toHaveValue("50541.09");
+    for (let cheque = 1; cheque < 10; cheque += 1) {
+      await user.click(screen.getByRole("button", { name: "Adicionar cheque" }));
+    }
+    expect(screen.getByLabelText("Referência do cheque 10")).toBeInTheDocument();
+    expect(screen.getByLabelText("Remover cheque 10")).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Valor do cheque 10"), { target: { value: "5054.11" } });
+    expect(screen.getByLabelText("Valor do cheque 10")).toHaveValue("5054.11");
+    expect(screen.getByText(/Total informado:/)).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Remover cheque 10"));
+    expect(screen.queryByLabelText("ReferÃªncia do cheque 10")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar baixa" })).toBeVisible();
+    expect(screen.getByRole("dialog").className).toContain("max-h-[calc(100dvh-2rem)]");
+    expect(screen.getByRole("dialog").className).toContain("sm:max-w-4xl");
+    expect(screen.getByText("Registrar baixa").closest('[data-slot="dialog-header"]')?.className).toContain("sticky");
+    expect(screen.getByRole("button", { name: "Confirmar baixa" }).closest('[data-slot="dialog-footer"]')?.className).toContain("sticky");
   });
 });

@@ -1273,6 +1273,34 @@ export const chequesFinanceiros = mysqlTable("chequesFinanceiros", {
 export type ChequeFinanceiro = typeof chequesFinanceiros.$inferSelect;
 export type InsertChequeFinanceiro = typeof chequesFinanceiros.$inferInsert;
 
+/** Eventos append-only do ciclo de apresentação e regularização de um cheque. */
+export const movimentacoesCheques = mysqlTable("movimentacoesCheques", {
+  id: int("id").autoincrement().primaryKey(),
+  empresaId: int("empresaId").notNull(),
+  chequeId: int("chequeId").notNull(),
+  tipo: mysqlEnum("tipo", ["devolucao", "reapresentacao", "deposito", "compensacao", "regularizacao"]).notNull(),
+  tentativa: int("tentativa"),
+  valor: decimal("valor", { precision: 14, scale: 2 }),
+  dataOperacao: timestamp("dataOperacao").notNull(),
+  motivo: text("motivo"),
+  formaPagamento: mysqlEnum("formaPagamento", ["pix", "dinheiro", "cheque", "transferencia", "boleto", "cartao_credito", "cartao_debito", "outro"]),
+  referencia: varchar("referencia", { length: 300 }),
+  contaDestinoId: int("contaDestinoId"),
+  baixaFinanceiraId: int("baixaFinanceiraId"),
+  chaveIdempotencia: varchar("chaveIdempotencia", { length: 64 }),
+  criadoPor: int("criadoPor").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  chequeDataIndice: index("mov_cheques_empresa_cheque_data_idx").on(table.empresaId, table.chequeId, table.dataOperacao, table.id),
+  chequeTipoIndice: index("mov_cheques_empresa_cheque_tipo_idx").on(table.empresaId, table.chequeId, table.tipo),
+  baixaIndice: index("mov_cheques_baixa_financeira_idx").on(table.baixaFinanceiraId),
+  idempotenciaUnica: uniqueIndex("mov_cheques_empresa_idempotencia_unico").on(table.empresaId, table.chaveIdempotencia),
+  operacaoTentativaUnica: uniqueIndex("mov_cheques_empresa_cheque_tipo_tentativa_unico").on(table.empresaId, table.chequeId, table.tipo, table.tentativa),
+}));
+
+export type MovimentacaoCheque = typeof movimentacoesCheques.$inferSelect;
+export type InsertMovimentacaoCheque = typeof movimentacoesCheques.$inferInsert;
+
 export const extratosBancarios = mysqlTable("extratosBancarios", {
   id: int("id").autoincrement().primaryKey(),
   empresaId: int("empresaId").notNull(),

@@ -4,7 +4,7 @@ import {
   orcamentos, itensOrcamento, componentesPacoteOrcamento, taxasAdicionaisOrcamento, produtosComerciais, componentesProdutoComercial, modelosMedidaVenda, historicoAlteracoes, empresaConfiguracoes,
   empresas, credenciaisUsuarios, convitesEmpresa, recuperacoesSenha,
   fornecedores, categoriasFinanceiras, contasFinanceiras, titulosFinanceiros, sequenciasVendas, sequenciasDocumentos,
-  baixasFinanceiras, chequesFinanceiros, recorrenciasFinanceiras, configuracoesFinanceiras, alertasFinanceiros, extratosBancarios, movimentosExtratoBancario, anexosFinanceiros, transferenciasFinanceiras, movimentosTransferenciasFinanceiras, vinculosConciliacaoBancaria, auditoriasConciliacaoBancaria,
+  baixasFinanceiras, chequesFinanceiros, movimentacoesCheques, recorrenciasFinanceiras, configuracoesFinanceiras, alertasFinanceiros, extratosBancarios, movimentosExtratoBancario, anexosFinanceiros, transferenciasFinanceiras, movimentosTransferenciasFinanceiras, vinculosConciliacaoBancaria, auditoriasConciliacaoBancaria,
   plaquetas, conferenciasVariacaoPlaquetas, romaneiosCargaToras, romaneiosProducao, itensRomaneioToras, itensRomaneioProducao, aproveitamentosRomaneioProducao, aproveitamentosOrcamento, serragensTerceiros, itensSerragemToras, itensSerragemPecas, retiradasSerragemTerceiros, itensRetiradaSerragemTerceiros, lotesPecasSerradas, movimentacoesPlaquetas, movimentacoesEstoqueSerrado, notasDiesel, abastecimentosDiesel,
   type InsertMadeira, type InsertBitola, type InsertCliente,
   type InsertOrcamento, type InsertItemOrcamento, type InsertComponentePacoteOrcamento, type InsertProdutoComercial, type InsertComponenteProdutoComercial, type InsertModeloMedidaVenda, type InsertFornecedor,
@@ -541,7 +541,14 @@ export async function listCaixasCheque() {
 }
 
 export async function listChequesFinanceiros(
-  filters: { contaFinanceiraId?: number; estado?: "disponivel" | "utilizado" | "estornado" | "depositado" },
+  filters: {
+    contaFinanceiraId?: number; estado?: "disponivel" | "utilizado" | "estornado" | "depositado";
+    estadoExibicao?: "disponivel" | "utilizado" | "estornado" | "depositado" | "compensado" | "regularizado";
+    clienteId?: number; cliente?: string; contaDestinoId?: number; referencia?: string; tituloId?: number;
+    dataRecebimentoInicio?: Date; dataRecebimentoFim?: Date; dataCompensacaoInicio?: Date; dataCompensacaoFim?: Date;
+    dataDepositoInicio?: Date; dataDepositoFim?: Date; valorMinimo?: number; valorMaximo?: number;
+    devolucoesMinimas?: number; devolucoesMaximas?: number;
+  },
 ) {
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
@@ -564,33 +571,114 @@ export async function listChequesFinanceiros(
     contaDestinoId: chequesFinanceiros.contaDestinoId,
     estado: chequesFinanceiros.estado,
     estornadoEm: chequesFinanceiros.estornadoEm,
+    motivoEstorno: chequesFinanceiros.motivoEstorno,
     contaNome: contasFinanceiras.nome,
     clienteNome: clientes.nome,
+    tituloId: titulosFinanceiros.id,
+    tituloDescricao: titulosFinanceiros.descricao,
   }).from(chequesFinanceiros)
     .innerJoin(contasFinanceiras, and(eq(chequesFinanceiros.contaFinanceiraId, contasFinanceiras.id), eq(contasFinanceiras.empresaId, empresaId)))
     .innerJoin(clientes, and(eq(chequesFinanceiros.clienteId, clientes.id), eq(clientes.empresaId, empresaId)))
+    .innerJoin(baixasFinanceiras, and(eq(chequesFinanceiros.baixaEntradaId, baixasFinanceiras.id), eq(baixasFinanceiras.empresaId, empresaId)))
+    .innerJoin(titulosFinanceiros, and(eq(baixasFinanceiras.tituloId, titulosFinanceiros.id), eq(titulosFinanceiros.empresaId, empresaId)))
     .where(and(...conditions))
     .orderBy(desc(chequesFinanceiros.dataRecebimento), desc(chequesFinanceiros.createdAt));
+  const ids = cheques.map((cheque) => cheque.id);
+  const eventos = ids.length ? await db.select({
+    chequeId: movimentacoesCheques.chequeId,
+    tipo: movimentacoesCheques.tipo,
+    tentativa: movimentacoesCheques.tentativa,
+    valor: movimentacoesCheques.valor,
+  }).from(movimentacoesCheques).where(and(eq(movimentacoesCheques.empresaId, empresaId), inArray(movimentacoesCheques.chequeId, ids))) : [];
+  const resumoEventos = new Map<number, { devolucoes: number; regularizado: number; depositos: number; reapresentacoes: number; compensacoes: Set<number> }>();
+  for (const evento of eventos) {
+    const resumo = resumoEventos.get(evento.chequeId) ?? { devolucoes: 0, regularizado: 0, depositos: 0, reapresentacoes: 0, compensacoes: new Set<number>() };
+    if (evento.tipo === "devolucao") resumo.devolucoes += 1;
+    if (evento.tipo === "regularizacao") resumo.regularizado += decimalParaNumero(evento.valor ?? 0);
+    if (evento.tipo === "deposito") resumo.depositos += 1;
+    if (evento.tipo === "reapresentacao") resumo.reapresentacoes += 1;
+    if (evento.tipo === "compensacao" && evento.tentativa !== null) resumo.compensacoes.add(evento.tentativa);
+    resumoEventos.set(evento.chequeId, resumo);
+  }
   const destinoIds = Array.from(new Set(cheques.map((cheque) => cheque.contaDestinoId).filter((id): id is number => id !== null)));
   const destinos = destinoIds.length
     ? await db.select({ id: contasFinanceiras.id, nome: contasFinanceiras.nome }).from(contasFinanceiras)
       .where(and(eq(contasFinanceiras.empresaId, empresaId), inArray(contasFinanceiras.id, destinoIds)))
     : [];
   const destinoPorId = new Map(destinos.map((conta) => [conta.id, conta.nome]));
-  return cheques.map((cheque) => ({
-    ...cheque,
-    contaDestinoNome: cheque.contaDestinoId ? destinoPorId.get(cheque.contaDestinoId) ?? "Conta bancária removida" : null,
-    alertaCompensacao: cheque.estado === "disponivel" ? classificarAlertaCompensacaoCheque(cheque.dataCompensacao) : null,
-  }));
+  return cheques.map((cheque) => {
+    const eventosCheque = resumoEventos.get(cheque.id) ?? { devolucoes: 0, regularizado: 0, depositos: 0, reapresentacoes: 0, compensacoes: new Set<number>() };
+    const estadoExibicao = cheque.estado === "estornado" && eventosCheque.regularizado >= decimalParaNumero(cheque.valor) - 0.005
+      ? "regularizado"
+      : cheque.estado === "depositado" && eventosCheque.compensacoes.has(eventosCheque.reapresentacoes + 1) ? "compensado" : cheque.estado;
+    return {
+      ...cheque,
+      contaDestinoNome: cheque.contaDestinoId ? destinoPorId.get(cheque.contaDestinoId) ?? "Conta bancária removida" : null,
+      alertaCompensacao: cheque.estado === "disponivel" ? classificarAlertaCompensacaoCheque(cheque.dataCompensacao) : null,
+      quantidadeDevolucoes: eventosCheque.devolucoes || (cheque.estornadoEm ? 1 : 0),
+      valorRegularizado: eventosCheque.regularizado,
+      estadoExibicao,
+    };
+  }).filter((cheque) => {
+    const minimoData = (valor: Date | undefined, atual: Date | null) => !valor || Boolean(atual && atual >= valor);
+    const maximoData = (valor: Date | undefined, atual: Date | null) => !valor || Boolean(atual && atual <= valor);
+    if (filters.estadoExibicao && cheque.estadoExibicao !== filters.estadoExibicao) return false;
+    if (filters.clienteId && cheque.clienteId !== filters.clienteId) return false;
+    if (filters.cliente && !cheque.clienteNome.toLocaleLowerCase("pt-BR").includes(filters.cliente.trim().toLocaleLowerCase("pt-BR"))) return false;
+    if (filters.contaDestinoId && cheque.contaDestinoId !== filters.contaDestinoId) return false;
+    if (filters.referencia && !cheque.referencia.toLocaleLowerCase("pt-BR").includes(filters.referencia.trim().toLocaleLowerCase("pt-BR"))) return false;
+    if (filters.tituloId && cheque.tituloId !== filters.tituloId) return false;
+    if (!minimoData(filters.dataRecebimentoInicio, cheque.dataRecebimento) || !maximoData(filters.dataRecebimentoFim, cheque.dataRecebimento)) return false;
+    if (!minimoData(filters.dataCompensacaoInicio, cheque.dataCompensacao) || !maximoData(filters.dataCompensacaoFim, cheque.dataCompensacao)) return false;
+    if (!minimoData(filters.dataDepositoInicio, cheque.depositadoEm) || !maximoData(filters.dataDepositoFim, cheque.depositadoEm)) return false;
+    if (filters.valorMinimo !== undefined && decimalParaNumero(cheque.valor) < filters.valorMinimo) return false;
+    if (filters.valorMaximo !== undefined && decimalParaNumero(cheque.valor) > filters.valorMaximo) return false;
+    if (filters.devolucoesMinimas !== undefined && cheque.quantidadeDevolucoes < filters.devolucoesMinimas) return false;
+    if (filters.devolucoesMaximas !== undefined && cheque.quantidadeDevolucoes > filters.devolucoesMaximas) return false;
+    return true;
+  });
 }
 
 /** Histórico auditável de cheques transferidos do Caixa Cheque para contas bancárias. */
 export async function listHistoricoDepositosPorConta(contaFinanceiraId: number | undefined) {
   const empresaId = (await getEmpresaUnica()).id;
-  const cheques = await listChequesFinanceiros({ estado: "depositado" });
-  return cheques
-    .filter((cheque) => !contaFinanceiraId || cheque.contaDestinoId === contaFinanceiraId)
-    .sort((a, b) => new Date(b.depositadoEm ?? 0).getTime() - new Date(a.depositadoEm ?? 0).getTime() || b.id - a.id);
+  const db = await getDb();
+  if (!db) return [];
+  const [cheques, eventos] = await Promise.all([
+    listChequesFinanceiros({}),
+    db.select({
+      id: movimentacoesCheques.id,
+      chequeId: movimentacoesCheques.chequeId,
+      tentativa: movimentacoesCheques.tentativa,
+      contaDestinoId: movimentacoesCheques.contaDestinoId,
+      valor: movimentacoesCheques.valor,
+      depositadoEm: movimentacoesCheques.dataOperacao,
+    }).from(movimentacoesCheques).where(and(
+      eq(movimentacoesCheques.empresaId, empresaId),
+      eq(movimentacoesCheques.tipo, "deposito"),
+    )).orderBy(desc(movimentacoesCheques.dataOperacao), desc(movimentacoesCheques.id)),
+  ]);
+  const chequePorId = new Map(cheques.map((cheque) => [cheque.id, cheque]));
+  const destinosIds = Array.from(new Set(eventos.map((evento) => evento.contaDestinoId).filter((id): id is number => id !== null)));
+  const destinos = destinosIds.length ? await db.select({ id: contasFinanceiras.id, nome: contasFinanceiras.nome })
+    .from(contasFinanceiras).where(and(eq(contasFinanceiras.empresaId, empresaId), inArray(contasFinanceiras.id, destinosIds))) : [];
+  const destinoPorId = new Map(destinos.map((conta) => [conta.id, conta.nome]));
+  const chequesComEvento = new Set(eventos.map((evento) => evento.chequeId));
+  const historico = eventos.flatMap((evento) => {
+    const cheque = chequePorId.get(evento.chequeId);
+    if (!cheque || (contaFinanceiraId && evento.contaDestinoId !== contaFinanceiraId)) return [];
+    return [{ ...cheque, id: evento.id, chequeId: cheque.id, tentativa: evento.tentativa ?? 0, depositadoEm: evento.depositadoEm,
+      valor: evento.valor ?? cheque.valor, contaDestinoId: evento.contaDestinoId,
+      contaDestinoNome: evento.contaDestinoId ? destinoPorId.get(evento.contaDestinoId) ?? "Conta bancária removida" : "Conta bancária não registrada",
+    }];
+  });
+  // Exibe o último depósito conhecido para registros antigos que ainda não possuem eventos migrados.
+  historico.push(...cheques.flatMap((cheque) => cheque.estado === "depositado" && cheque.depositadoEm && !chequesComEvento.has(cheque.id)
+    && (!contaFinanceiraId || cheque.contaDestinoId === contaFinanceiraId) ? [{
+      ...cheque, chequeId: cheque.id, tentativa: 0, depositadoEm: cheque.depositadoEm as Date,
+      contaDestinoNome: cheque.contaDestinoNome ?? "Conta bancária removida",
+    }] : []));
+  return historico.sort((a, b) => new Date(b.depositadoEm ?? 0).getTime() - new Date(a.depositadoEm ?? 0).getTime() || b.id - a.id);
 }
 
 /**
@@ -601,38 +689,177 @@ export async function depositarChequeFinanceiro(input: {
   id: number;
   contaDestinoId: number;
   dataDeposito: Date;
+  userId: number;
 }) {
   const empresaId = (await getEmpresaUnica()).id;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const [cheque, contaDestino] = await Promise.all([
-    db.select().from(chequesFinanceiros)
-      .where(and(eq(chequesFinanceiros.id, input.id), eq(chequesFinanceiros.empresaId, empresaId))).limit(1),
-    db.select().from(contasFinanceiras)
-      .where(and(eq(contasFinanceiras.id, input.contaDestinoId), eq(contasFinanceiras.empresaId, empresaId))).limit(1),
-  ]);
-  if (!cheque[0]) throw new Error("Cheque não encontrado");
-  if (!contaDestino[0]) throw new Error("Conta bancária de destino não encontrada");
-  validarDepositoCheque({
-    estado: cheque[0].estado,
-    contaDestinoTipo: contaDestino[0].tipo,
-    contaDestinoAtiva: Boolean(contaDestino[0].ativa),
+  return db.transaction(async (tx) => {
+    const cheque = (await tx.select().from(chequesFinanceiros)
+      .where(and(eq(chequesFinanceiros.id, input.id), eq(chequesFinanceiros.empresaId, empresaId))).for("update").limit(1))[0];
+    const contaDestino = (await tx.select().from(contasFinanceiras)
+      .where(and(eq(contasFinanceiras.id, input.contaDestinoId), eq(contasFinanceiras.empresaId, empresaId))).limit(1))[0];
+    if (!cheque) throw new Error("Cheque não encontrado");
+    if (!contaDestino) throw new Error("Conta bancária de destino não encontrada");
+    validarDepositoCheque({ estado: cheque.estado, contaDestinoTipo: contaDestino.tipo, contaDestinoAtiva: Boolean(contaDestino.ativa) });
+    const reapresentacoesAnteriores = await tx.select({ id: movimentacoesCheques.id }).from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, cheque.id), eq(movimentacoesCheques.tipo, "reapresentacao")));
+    const tentativa = reapresentacoesAnteriores.length + 1;
+    const [resultado] = await tx.update(chequesFinanceiros).set({
+      estado: "depositado", depositadoEm: input.dataDeposito, contaDestinoId: contaDestino.id,
+    }).where(and(eq(chequesFinanceiros.id, cheque.id), eq(chequesFinanceiros.empresaId, empresaId), eq(chequesFinanceiros.estado, "disponivel")));
+    if (resultado.affectedRows !== 1) throw new Error("Este cheque não está mais disponível para depósito");
+    await tx.insert(movimentacoesCheques).values({
+      empresaId, chequeId: cheque.id, tipo: "deposito", tentativa, valor: cheque.valor,
+      dataOperacao: input.dataDeposito, motivo: null, formaPagamento: null, referencia: null,
+      contaDestinoId: contaDestino.id,
+      baixaFinanceiraId: null, chaveIdempotencia: null, criadoPor: input.userId,
+    });
+    return { success: true, chequeId: cheque.id, contaDestinoId: contaDestino.id };
   });
+}
 
-  const [resultado] = await db.update(chequesFinanceiros).set({
-    estado: "depositado",
-    depositadoEm: input.dataDeposito,
-    contaDestinoId: contaDestino[0].id,
-  }).where(and(
-    eq(chequesFinanceiros.id, cheque[0].id),
-    eq(chequesFinanceiros.empresaId, empresaId),
-    eq(chequesFinanceiros.estado, "disponivel"),
-  ));
-  if (resultado.affectedRows !== 1) {
-    throw new Error("Este cheque não está mais disponível para depósito");
-  }
-  return { success: true, chequeId: cheque[0].id, contaDestinoId: contaDestino[0].id };
+export async function reapresentarChequeFinanceiro(input: { id: number; motivo: string; dataReapresentacao: Date; userId: number }) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const cheque = (await tx.select().from(chequesFinanceiros)
+      .where(and(eq(chequesFinanceiros.id, input.id), eq(chequesFinanceiros.empresaId, empresaId))).for("update").limit(1))[0];
+    if (!cheque) throw new Error("Cheque não encontrado");
+    if (cheque.estado !== "estornado") throw new Error("Somente cheque devolvido pode ser reapresentado");
+    const eventos = await tx.select({ tipo: movimentacoesCheques.tipo, valor: movimentacoesCheques.valor }).from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, cheque.id)));
+    const valorRegularizado = eventos.filter((evento) => evento.tipo === "regularizacao")
+      .reduce((total, evento) => total + decimalParaNumero(evento.valor ?? 0), 0);
+    if (valorRegularizado >= decimalParaNumero(cheque.valor) - 0.005) throw new Error("Este cheque já foi integralmente regularizado e não pode ser reapresentado");
+    const motivo = input.motivo.trim();
+    if (motivo.length < 3) throw new Error("Informe o motivo da reapresentação do cheque");
+    if (!eventos.some((evento) => evento.tipo === "devolucao") && cheque.estornadoEm) {
+      // Migra para a nova trilha somente a devolução legada que já está registrada no próprio cheque.
+      await tx.insert(movimentacoesCheques).values({
+        empresaId, chequeId: cheque.id, tipo: "devolucao", tentativa: 1, valor: cheque.valor,
+        dataOperacao: cheque.estornadoEm, motivo: cheque.motivoEstorno, formaPagamento: null, referencia: null,
+        baixaFinanceiraId: cheque.baixaEntradaId, chaveIdempotencia: null, criadoPor: input.userId,
+      });
+    }
+    const tentativa = eventos.filter((evento) => evento.tipo === "reapresentacao").length + 2;
+    const [resultado] = await tx.update(chequesFinanceiros).set({ estado: "disponivel" })
+      .where(and(eq(chequesFinanceiros.id, cheque.id), eq(chequesFinanceiros.empresaId, empresaId), eq(chequesFinanceiros.estado, "estornado")));
+    if (resultado.affectedRows !== 1) throw new Error("O cheque mudou de situação; atualize a tela e tente novamente");
+    await tx.insert(movimentacoesCheques).values({
+      empresaId, chequeId: cheque.id, tipo: "reapresentacao", tentativa, valor: cheque.valor,
+      dataOperacao: input.dataReapresentacao, motivo, formaPagamento: null, referencia: null,
+      baixaFinanceiraId: null, chaveIdempotencia: null, criadoPor: input.userId,
+    });
+    return { success: true, chequeId: cheque.id, tentativa };
+  });
+}
+
+export async function historicoMovimentacoesCheque(id: number) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const cheque = (await db.select({ id: chequesFinanceiros.id }).from(chequesFinanceiros)
+    .where(and(eq(chequesFinanceiros.id, id), eq(chequesFinanceiros.empresaId, empresaId))).limit(1))[0];
+  if (!cheque) throw new Error("Cheque não encontrado");
+  const eventos = await db.select({
+    id: movimentacoesCheques.id, tipo: movimentacoesCheques.tipo, tentativa: movimentacoesCheques.tentativa,
+    valor: movimentacoesCheques.valor, dataOperacao: movimentacoesCheques.dataOperacao, motivo: movimentacoesCheques.motivo,
+    formaPagamento: movimentacoesCheques.formaPagamento, referencia: movimentacoesCheques.referencia,
+    baixaFinanceiraId: movimentacoesCheques.baixaFinanceiraId, criadoPor: movimentacoesCheques.criadoPor,
+  }).from(movimentacoesCheques).where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, id)))
+    .orderBy(asc(movimentacoesCheques.dataOperacao), asc(movimentacoesCheques.id));
+  return eventos;
+}
+
+export async function compensarChequeFinanceiro(input: { id: number; dataCompensacao: Date; userId: number }) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const cheque = (await tx.select().from(chequesFinanceiros)
+      .where(and(eq(chequesFinanceiros.id, input.id), eq(chequesFinanceiros.empresaId, empresaId))).for("update").limit(1))[0];
+    if (!cheque) throw new Error("Cheque não encontrado");
+    if (cheque.estado !== "depositado") throw new Error("Somente cheque apresentado ao banco pode ser confirmado como compensado");
+    const eventos = await tx.select({ tipo: movimentacoesCheques.tipo, tentativa: movimentacoesCheques.tentativa, baixaFinanceiraId: movimentacoesCheques.baixaFinanceiraId })
+      .from(movimentacoesCheques).where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, cheque.id)));
+    const tentativaAtual = eventos.filter((evento) => evento.tipo === "reapresentacao").length + 1;
+    if (eventos.some((evento) => evento.tipo === "compensacao" && evento.tentativa === tentativaAtual)) {
+      throw new Error("Esta apresentação já foi confirmada como compensada");
+    }
+    const teveDevolucaoNestaApresentacao = eventos.some((evento) => evento.tipo === "devolucao" && evento.tentativa === tentativaAtual);
+    const baixaFoiEstornadaPorDevolucaoAnterior = eventos.some((evento) => (
+      evento.tipo === "devolucao" && evento.baixaFinanceiraId === cheque.baixaEntradaId
+    ));
+    let baixaId = cheque.baixaEntradaId;
+    if (teveDevolucaoNestaApresentacao || baixaFoiEstornadaPorDevolucaoAnterior) {
+      const baixaAtual = (await tx.select().from(baixasFinanceiras)
+        .where(and(eq(baixasFinanceiras.id, cheque.baixaEntradaId), eq(baixasFinanceiras.empresaId, empresaId))).for("update").limit(1))[0];
+      if (!baixaAtual) throw new Error("Baixa financeira vinculada ao cheque não encontrada");
+      const resultadoBaixa = await registrarBaixaFinanceira({
+        tituloId: baixaAtual.tituloId, contaFinanceiraId: cheque.contaFinanceiraId, valor: cheque.valor,
+        dataBaixa: input.dataCompensacao, formaPagamento: "cheque", observacoes: `Compensação bancária do cheque ${cheque.referencia}`,
+        origemBaixa: "manual", criadoPor: input.userId, chequeExistenteReapresentadoId: cheque.id,
+      }, tx);
+      baixaId = resultadoBaixa.id;
+    }
+    await tx.insert(movimentacoesCheques).values({
+      empresaId, chequeId: cheque.id, tipo: "compensacao", tentativa: tentativaAtual, valor: cheque.valor,
+      dataOperacao: input.dataCompensacao, motivo: null, formaPagamento: "cheque", referencia: null,
+      baixaFinanceiraId: baixaId, chaveIdempotencia: null, criadoPor: input.userId,
+    });
+    return { success: true, chequeId: cheque.id, tentativa: tentativaAtual, baixaFinanceiraId: baixaId,
+      novaBaixaCriada: teveDevolucaoNestaApresentacao || baixaFoiEstornadaPorDevolucaoAnterior };
+  });
+}
+
+export async function regularizarChequeFinanceiro(input: {
+  id: number; contaFinanceiraId: number; valor: string; dataRegularizacao: Date;
+  formaPagamento: "pix" | "dinheiro" | "transferencia" | "boleto" | "cartao_credito" | "cartao_debito" | "outro";
+  referencia?: string | null; observacoes?: string | null; chaveIdempotencia: string; userId: number;
+}) {
+  const empresaId = (await getEmpresaUnica()).id;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const duplicada = (await tx.select().from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chaveIdempotencia, input.chaveIdempotencia))).limit(1))[0];
+    if (duplicada && duplicada.chequeId !== input.id) throw new Error("A chave de idempotência já foi usada em outro cheque");
+    if (duplicada) return { success: true, idempotente: true, baixaFinanceiraId: duplicada.baixaFinanceiraId };
+    const cheque = (await tx.select().from(chequesFinanceiros)
+      .where(and(eq(chequesFinanceiros.id, input.id), eq(chequesFinanceiros.empresaId, empresaId))).for("update").limit(1))[0];
+    if (!cheque) throw new Error("Cheque não encontrado");
+    const repeticaoConcorrente = (await tx.select().from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chaveIdempotencia, input.chaveIdempotencia))).limit(1))[0];
+    if (repeticaoConcorrente && repeticaoConcorrente.chequeId !== input.id) throw new Error("A chave de idempotência já foi usada em outro cheque");
+    if (repeticaoConcorrente) return { success: true, idempotente: true, baixaFinanceiraId: repeticaoConcorrente.baixaFinanceiraId };
+    if (cheque.estado !== "estornado") throw new Error("Somente cheque devolvido pode ser regularizado por pagamento direto");
+    const valor = decimalParaNumero(input.valor);
+    if (!Number.isFinite(valor) || valor <= 0) throw new Error("Informe um valor de regularização maior que zero");
+    const eventos = await tx.select({ tipo: movimentacoesCheques.tipo, valor: movimentacoesCheques.valor }).from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, cheque.id)));
+    const jaRegularizado = eventos.filter((evento) => evento.tipo === "regularizacao")
+      .reduce((total, evento) => total + decimalParaNumero(evento.valor ?? 0), 0);
+    if (valor + jaRegularizado > decimalParaNumero(cheque.valor) + 0.005) throw new Error("A regularização excede o saldo ainda não regularizado deste cheque");
+    const baixaOrigem = (await tx.select().from(baixasFinanceiras)
+      .where(and(eq(baixasFinanceiras.id, cheque.baixaEntradaId), eq(baixasFinanceiras.empresaId, empresaId))).limit(1))[0];
+    if (!baixaOrigem) throw new Error("Recebimento de origem do cheque não encontrado");
+    const baixa = await registrarBaixaFinanceira({
+      tituloId: baixaOrigem.tituloId, contaFinanceiraId: input.contaFinanceiraId, valor: valor.toFixed(2),
+      dataBaixa: input.dataRegularizacao, formaPagamento: input.formaPagamento,
+      observacoes: input.observacoes?.trim() || `Regularização do cheque ${cheque.referencia}`,
+      origemBaixa: "manual", criadoPor: input.userId,
+    }, tx);
+    await tx.insert(movimentacoesCheques).values({
+      empresaId, chequeId: cheque.id, tipo: "regularizacao", tentativa: null, valor: valor.toFixed(2),
+      dataOperacao: input.dataRegularizacao, motivo: input.observacoes?.trim() || null,
+      formaPagamento: input.formaPagamento, referencia: input.referencia?.trim() || null,
+      baixaFinanceiraId: baixa.id, chaveIdempotencia: input.chaveIdempotencia, criadoPor: input.userId,
+    });
+    return { success: true, idempotente: false, baixaFinanceiraId: baixa.id };
+  });
 }
 
 export async function getResumoCaixaCheque() {
@@ -1305,6 +1532,8 @@ type ChequeRecebidoInput = {
 export type BaixaComChequesInput = Pick<InsertBaixaFinanceira, "tituloId" | "contaFinanceiraId" | "valor" | "dataBaixa" | "formaPagamento" | "observacoes" | "origemBaixa" | "criadoPor"> & {
   chequesRecebidos?: ChequeRecebidoInput[];
   chequeIdsUtilizados?: number[];
+  /** Compensação de reapresentação sem criar outro registro de cheque. */
+  chequeExistenteReapresentadoId?: number;
 };
 
 export async function registrarBaixaFinanceira(data: BaixaComChequesInput, database?: DatabaseConnection | any) {
@@ -1329,6 +1558,19 @@ export async function registrarBaixaFinanceira(data: BaixaComChequesInput, datab
     const ehCaixaCheque = conta.tipo === "caixa_cheque";
     const chequesRecebidos = data.chequesRecebidos ?? [];
     const chequeIdsUtilizados = Array.from(new Set(data.chequeIdsUtilizados ?? []));
+    let chequeReapresentado: InferSelectModel<typeof chequesFinanceiros> | null = null;
+    if (data.chequeExistenteReapresentadoId) {
+      if (!ehCaixaCheque || titulo.tipo !== "receber" || data.formaPagamento !== "cheque" || chequesRecebidos.length || chequeIdsUtilizados.length) {
+        throw new Error("A compensação de cheque reapresentado exige conta Caixa Cheque e preserva o registro original");
+      }
+      chequeReapresentado = (await tx.select().from(chequesFinanceiros)
+        .where(and(eq(chequesFinanceiros.id, data.chequeExistenteReapresentadoId), eq(chequesFinanceiros.empresaId, empresaId))).for("update").limit(1))[0] ?? null;
+      if (!chequeReapresentado || chequeReapresentado.estado !== "depositado") throw new Error("Cheque reapresentado não está depositado para compensação");
+      const baixaAtual = (await tx.select().from(baixasFinanceiras)
+        .where(and(eq(baixasFinanceiras.id, chequeReapresentado.baixaEntradaId), eq(baixasFinanceiras.empresaId, empresaId))).limit(1))[0];
+      if (!baixaAtual || baixaAtual.tituloId !== titulo.id) throw new Error("Cheque não pertence ao título informado");
+      validarValorDosCheques(valorBaixa, [chequeReapresentado.valor]);
+    }
     if (!ehCaixaCheque && (data.formaPagamento === "cheque" || chequesRecebidos.length || chequeIdsUtilizados.length)) {
       throw new Error("Cheque deve ser registrado exclusivamente em uma conta do tipo Caixa Cheque");
     }
@@ -1337,7 +1579,10 @@ export async function registrarBaixaFinanceira(data: BaixaComChequesInput, datab
     }
 
     if (ehCaixaCheque && titulo.tipo === "receber") {
-      if (!chequesRecebidos.length) throw new Error("Informe pelo menos um cheque para registrar este recebimento");
+      if (!chequeReapresentado && !chequesRecebidos.length) throw new Error("Informe pelo menos um cheque para registrar este recebimento");
+      if (chequeReapresentado) {
+        // O cheque já foi validado acima e será reutilizado sem duplicar sua identidade.
+      } else {
       if (chequeIdsUtilizados.length) throw new Error("Cheques disponíveis só podem ser utilizados em contas a pagar");
       const referencias = chequesRecebidos.map((cheque) => cheque.referencia.trim()).filter(Boolean);
       if (referencias.length !== chequesRecebidos.length) throw new Error("Informe a referência de cada cheque recebido");
@@ -1356,6 +1601,7 @@ export async function registrarBaixaFinanceira(data: BaixaComChequesInput, datab
         const clienteId = cheque.clienteId ?? titulo.clienteId;
         if (!clienteId) throw new Error("Informe o cliente vinculado a cada cheque recebido");
         if (titulo.clienteId && clienteId !== titulo.clienteId) throw new Error("O cliente do cheque deve ser o mesmo cliente do título a receber");
+      }
       }
     }
 
@@ -1376,11 +1622,15 @@ export async function registrarBaixaFinanceira(data: BaixaComChequesInput, datab
       validarValorDosCheques(valorBaixa, chequesSelecionados.map((cheque) => cheque.valor));
     }
 
-    const { chequesRecebidos: _chequesRecebidos, chequeIdsUtilizados: _chequeIdsUtilizados, ...dadosBaixa } = data;
+    const { chequesRecebidos: _chequesRecebidos, chequeIdsUtilizados: _chequeIdsUtilizados, chequeExistenteReapresentadoId: _chequeExistenteReapresentadoId, ...dadosBaixa } = data;
     const result = await tx.insert(baixasFinanceiras).values({ ...dadosBaixa, valor: valorBaixa.toFixed(2), empresaId });
     const baixaId = getInsertedId(result as MysqlInsertResult);
 
-    if (ehCaixaCheque && titulo.tipo === "receber") {
+    if (ehCaixaCheque && titulo.tipo === "receber" && chequeReapresentado) {
+      const [atualizado] = await tx.update(chequesFinanceiros).set({ baixaEntradaId: baixaId })
+        .where(and(eq(chequesFinanceiros.id, chequeReapresentado.id), eq(chequesFinanceiros.empresaId, empresaId), eq(chequesFinanceiros.estado, "depositado")));
+      if (atualizado.affectedRows !== 1) throw new Error("O cheque mudou de situação durante a compensação");
+    } else if (ehCaixaCheque && titulo.tipo === "receber") {
       const itens: InsertChequeFinanceiro[] = chequesRecebidos.map((cheque) => ({
         empresaId,
         contaFinanceiraId: conta.id,
@@ -2147,33 +2397,48 @@ export async function devolverChequeFinanceiro(input: {
     if (!titulo) throw new Error("Título financeiro de origem do cheque não encontrado");
 
     const valorCheque = decimalParaNumero(cheque.valor);
+    const devolucoesAnteriores = await tx.select({ id: movimentacoesCheques.id }).from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, cheque.id), eq(movimentacoesCheques.tipo, "devolucao"), eq(movimentacoesCheques.baixaFinanceiraId, baixa.id)));
+    const primeiraDevolucao = devolucoesAnteriores.length === 0;
     const valorBaixa = decimalParaNumero(baixa.valor);
-    const cicloAntesDaDevolucao = await reconciliarCicloTituloFinanceiro(tx, titulo, empresaId, input.dataDevolucao);
-    if (valorCheque > valorBaixa + 0.005 || valorCheque > cicloAntesDaDevolucao.valorBaixado + 0.005) {
-      throw new Error("O valor do cheque não é compatível com o recebimento de origem");
+    if (primeiraDevolucao) {
+      const cicloAntesDaDevolucao = await reconciliarCicloTituloFinanceiro(tx, titulo, empresaId, input.dataDevolucao);
+      if (valorCheque > valorBaixa + 0.005 || valorCheque > cicloAntesDaDevolucao.valorBaixado + 0.005) {
+        throw new Error("O valor do cheque não é compatível com o recebimento de origem");
+      }
     }
     const valorRestanteBaixa = Math.max(0, valorBaixa - valorCheque);
     const motivo = input.motivo.trim();
 
-    await tx.update(chequesFinanceiros).set({
+    const [atualizado] = await tx.update(chequesFinanceiros).set({
       estado: "estornado",
       estornadoEm: input.dataDevolucao,
       motivoEstorno: motivo,
-    }).where(and(eq(chequesFinanceiros.id, cheque.id), eq(chequesFinanceiros.empresaId, empresaId)));
+    }).where(and(eq(chequesFinanceiros.id, cheque.id), eq(chequesFinanceiros.empresaId, empresaId), inArray(chequesFinanceiros.estado, ["disponivel", "depositado"])));
+    if (atualizado.affectedRows !== 1) throw new Error("O cheque mudou de situação; atualize a tela e tente novamente");
 
-    if (valorRestanteBaixa <= 0.005) {
-      await tx.update(baixasFinanceiras).set({
-        estornada: true,
-        estornadaEm: input.dataDevolucao,
-        estornadaPor: input.userId,
-        motivoEstorno: `Cheque devolvido: ${motivo}`,
-        conciliada: false,
-        conciliadaEm: null,
-      }).where(and(eq(baixasFinanceiras.id, baixa.id), eq(baixasFinanceiras.empresaId, empresaId)));
-    } else {
-      await tx.update(baixasFinanceiras).set({ valor: valorRestanteBaixa.toFixed(2) })
-        .where(and(eq(baixasFinanceiras.id, baixa.id), eq(baixasFinanceiras.empresaId, empresaId)));
+    if (primeiraDevolucao) {
+      if (valorRestanteBaixa <= 0.005) {
+        await tx.update(baixasFinanceiras).set({
+          estornada: true,
+          estornadaEm: input.dataDevolucao,
+          estornadaPor: input.userId,
+          motivoEstorno: `Cheque devolvido: ${motivo}`,
+          conciliada: false,
+          conciliadaEm: null,
+        }).where(and(eq(baixasFinanceiras.id, baixa.id), eq(baixasFinanceiras.empresaId, empresaId)));
+      } else {
+        await tx.update(baixasFinanceiras).set({ valor: valorRestanteBaixa.toFixed(2) })
+          .where(and(eq(baixasFinanceiras.id, baixa.id), eq(baixasFinanceiras.empresaId, empresaId)));
+      }
     }
+    const tentativas = await tx.select({ id: movimentacoesCheques.id }).from(movimentacoesCheques)
+      .where(and(eq(movimentacoesCheques.empresaId, empresaId), eq(movimentacoesCheques.chequeId, cheque.id), eq(movimentacoesCheques.tipo, "reapresentacao")));
+    await tx.insert(movimentacoesCheques).values({
+      empresaId, chequeId: cheque.id, tipo: "devolucao", tentativa: tentativas.length + 1, valor: cheque.valor,
+      dataOperacao: input.dataDevolucao, motivo, formaPagamento: null, referencia: null,
+      baixaFinanceiraId: baixa.id, chaveIdempotencia: null, criadoPor: input.userId,
+    });
     const ciclo = await reconciliarCicloTituloFinanceiro(tx, titulo, empresaId, input.dataDevolucao);
     return { success: true, tituloId: titulo.id, estadoTitulo: ciclo.estado, valorDevolvido: valorCheque };
   });
